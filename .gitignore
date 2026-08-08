@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# TOC local backups and Python cache
+_backups/
+__pycache__/
+*.pyc
