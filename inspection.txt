@@ -1,0 +1,51 @@
+﻿ 
+=== TOC PHASE 3: ALL-GAME SCHEMA INSPECTION ===
+Source: C:\Users\asus\Documents\MASTER_DATA
+Expected games:  19
+Games discovered: 19
+
+01. fortune thursday | tables=1 | rows=133 | data=132 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+02. friday bonanza | tables=1 | rows=128 | data=127 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+03. lucky tuesday | tables=1 | rows=137 | data=136 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+04. monday special | tables=1 | rows=134 | data=133 | columns=2 | draw-count=5 | bad-dates=1 | bad-draws=0
+    BAD DATE | row=115 | date='9th March. 26' | draw='67-6-34-17-28'
+05. noon friday | tables=1 | rows=127 | data=126 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+06. noon monday | tables=1 | rows=134 | data=133 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+07. noon saturday | tables=1 | rows=135 | data=134 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+08. noon thursday | tables=1 | rows=133 | data=132 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+09. noon tuesday | tables=1 | rows=136 | data=135 | columns=2 | draw-count=5 | bad-dates=2 | bad-draws=0
+    BAD DATE | row=116 | date='17th March,26' | draw='19-66-58-23-45'
+    BAD DATE | row=121 | date='21st April. 26' | draw='59-82-27-14-1'
+10. noon wednesday | tables=1 | rows=134 | data=133 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=1
+    BAD DRAW | row=112 | date='25th Feb, 26' | draw='52-37-33-71-75s'
+11. saturday national | tables=1 | rows=136 | data=135 | columns=2 | draw-count=5 | bad-dates=1 | bad-draws=0
+    BAD DATE | row=124 | date='9th May. 26' | draw='80-74-56-10-3'
+12. sunday aseda | tables=1 | rows=135 | data=134 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+13. vag friday | tables=1 | rows=127 | data=126 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+14. vag monday | tables=1 | rows=134 | data=133 | columns=2 | draw-count=5 | bad-dates=1 | bad-draws=1
+    BAD DATE | row=120 | date='27th April,26' | draw='33-4-21-19-24'
+    BAD DRAW | row=133 | date='27th July, 26' | draw='21-83-57-38-47s'
+15. vag saturday | tables=1 | rows=136 | data=135 | columns=2 | draw-count=5 | bad-dates=1 | bad-draws=0
+    BAD DATE | row=113 | date='21th Feb,26' | draw='24-83-69-11-6'
+16. vag thursday | tables=1 | rows=134 | data=133 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+17. vag tuesday | tables=1 | rows=136 | data=135 | columns=2 | draw-count=5 | bad-dates=1 | bad-draws=0
+    BAD DATE | row=113 | date='24th Feb,26' | draw='59-56-57-76-10'
+18. vag wednesday | tables=1 | rows=136 | data=135 | columns=2 | draw-count=5 | bad-dates=0 | bad-draws=0
+19. wednesday midweek | tables=1 | rows=137 | data=136 | columns=2 | draw-count=5 | bad-dates=1 | bad-draws=0
+    BAD DATE | row=128 | date='3rd June,26' | draw='90-53-49-88-68'
+
+=== SCHEMA SUMMARY ===
+Games discovered:    19
+Games readable:      19
+Games failed:        0
+Total data rows:    2523
+Column counts seen:  [2]
+Draw-number counts:  [5]
+Distinct headers:    1
+Invalid date rows:  8
+Invalid draw rows:  2
+
+=== HEADERS DETECTED ===
+01. ['Date', 'Draw Numbers']
+
+ALL-GAME SCHEMA INSPECTION: REVIEW REQUIRED
