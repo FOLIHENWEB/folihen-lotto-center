@@ -168,6 +168,22 @@ const TheresaPage: React.FC = () => {
     void loadTheresa(
       'initial',
     );
+
+    const handleTheresaComplete = () => {
+      void loadTheresa('refresh');
+    };
+
+    window.addEventListener(
+      'theresa:run-complete',
+      handleTheresaComplete,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'theresa:run-complete',
+        handleTheresaComplete,
+      );
+    };
   }, [
     loadTheresa,
   ]);
@@ -187,6 +203,7 @@ const TheresaPage: React.FC = () => {
 
   const generatedAt =
     prediction?.generated_at ??
+    prediction?.generated ??
     prediction?.timestamp ??
     '—';
 

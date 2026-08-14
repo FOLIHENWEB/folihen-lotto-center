@@ -1,9 +1,9 @@
 {
   "schema": "toc.normalized_master_data",
   "schema_version": 1,
-  "generated_at_utc": "2026-08-10T21:42:33.073318+00:00",
+  "generated_at_utc": "2026-08-14T01:22:33.832886+00:00",
   "game_count": 19,
-  "record_count": 2533,
+  "record_count": 2541,
   "games": [
     {
       "game": "fortune thursday",
@@ -4189,9 +4189,9 @@
       "game": "lucky tuesday",
       "source": {
         "file": "lucky tuesday.docx",
-        "sha256": "db3b33a1126e41788e49db06ee82c2a7e1b970d2aa2dd5834ec90600a65f73c5"
+        "sha256": "ba40253a4b498f6b069a367692f991087ac75d0cedcec27baa0b6a165776605b"
       },
-      "record_count": 136,
+      "record_count": 137,
       "records": [
         {
           "game": "lucky tuesday",
@@ -6368,6 +6368,22 @@
             29,
             16
           ]
+        },
+        {
+          "game": "lucky tuesday",
+          "source_file": "lucky tuesday.docx",
+          "source_table": 1,
+          "source_row": 138,
+          "source_date_text": "11th Aug, 26",
+          "source_draw_text": "39-1-10-49-89",
+          "draw_date": "2026-08-11",
+          "draw_numbers": [
+            39,
+            1,
+            10,
+            49,
+            89
+          ]
         }
       ]
     },
@@ -6375,7 +6391,7 @@
       "game": "monday special",
       "source": {
         "file": "monday special.docx",
-        "sha256": "d7650e14dab84ec12dfb999f381138d6cadc3940ab639785825d8889b6e6f1fb"
+        "sha256": "62cddb9b435c07ad7d6be032c44eed0aa5cdbec2403a44034686f3021becc20a"
       },
       "record_count": 134,
       "records": [
@@ -14895,9 +14911,9 @@
       "game": "noon thursday",
       "source": {
         "file": "noon thursday.docx",
-        "sha256": "1e81a129ed9ae0c96f57659fbd9be48059fdc5fef88267cda20ac9eb64520060"
+        "sha256": "b48b38f0a0a53200f1e6684eb8e2037173707aee10e31c84652b414f2681aff9"
       },
-      "record_count": 132,
+      "record_count": 133,
       "records": [
         {
           "game": "noon thursday",
@@ -17010,6 +17026,22 @@
             68,
             76
           ]
+        },
+        {
+          "game": "noon thursday",
+          "source_file": "noon thursday.docx",
+          "source_table": 1,
+          "source_row": 134,
+          "source_date_text": "13th Aug, 26",
+          "source_draw_text": "33-26-69-27-8",
+          "draw_date": "2026-08-13",
+          "draw_numbers": [
+            33,
+            26,
+            69,
+            27,
+            8
+          ]
         }
       ]
     },
@@ -17017,9 +17049,9 @@
       "game": "noon tuesday",
       "source": {
         "file": "noon tuesday.docx",
-        "sha256": "ae77a3ea6b2a1d99eeb3bcdd8558f3ded6f8b1df78a7a9cf2fa5ba69d4f1b06f"
+        "sha256": "e266575a2559e9bc465b1cc8011ff66c81534e298f6c002deac1e2467013d8dc"
       },
-      "record_count": 135,
+      "record_count": 136,
       "records": [
         {
           "game": "noon tuesday",
@@ -19180,6 +19212,22 @@
             69,
             80
           ]
+        },
+        {
+          "game": "noon tuesday",
+          "source_file": "noon tuesday.docx",
+          "source_table": 1,
+          "source_row": 137,
+          "source_date_text": "11th Aug, 26",
+          "source_draw_text": "13-18-84-41-73",
+          "draw_date": "2026-08-11",
+          "draw_numbers": [
+            13,
+            18,
+            84,
+            41,
+            73
+          ]
         }
       ]
     },
@@ -19187,9 +19235,9 @@
       "game": "noon wednesday",
       "source": {
         "file": "noon wednesday.docx",
-        "sha256": "f76c7bed842578ff71eb6fdd86d6d302f39a69d2a484d09db6860e3f82d4cc30"
+        "sha256": "e53bfc268af75f186f633364853aa8ee64c6d39d70ab2f84ed7fef8ddc6ac044"
       },
-      "record_count": 133,
+      "record_count": 134,
       "records": [
         {
           "game": "noon wednesday",
@@ -21317,6 +21365,22 @@
             60,
             19,
             86
+          ]
+        },
+        {
+          "game": "noon wednesday",
+          "source_file": "noon wednesday.docx",
+          "source_table": 1,
+          "source_row": 135,
+          "source_date_text": "12th Aug, 26",
+          "source_draw_text": "71-46-87-26-54",
+          "draw_date": "2026-08-12",
+          "draw_numbers": [
+            71,
+            46,
+            87,
+            26,
+            54
           ]
         }
       ]
@@ -32063,9 +32127,9 @@
       "game": "vag thursday",
       "source": {
         "file": "vag thursday.docx",
-        "sha256": "17b1d495ee2776730ea1580dd1235404f8c9b2650d52bcdca648350ed7dddea8"
+        "sha256": "02583d4fca4dbd4caf11e6a356f69d627d2848255617922dc45a780280c69a3a"
       },
-      "record_count": 133,
+      "record_count": 134,
       "records": [
         {
           "game": "vag thursday",
@@ -34194,6 +34258,22 @@
             76,
             86
           ]
+        },
+        {
+          "game": "vag thursday",
+          "source_file": "vag thursday.docx",
+          "source_table": 1,
+          "source_row": 135,
+          "source_date_text": "13th Aug, 26",
+          "source_draw_text": "36-72-50-26-31",
+          "draw_date": "2026-08-13",
+          "draw_numbers": [
+            36,
+            72,
+            50,
+            26,
+            31
+          ]
         }
       ]
     },
@@ -34201,9 +34281,9 @@
       "game": "vag tuesday",
       "source": {
         "file": "vag tuesday.docx",
-        "sha256": "4a187f4df6c86897c95f7edf3e0f829e7d143afcc6806bdc2307ffff29b6572a"
+        "sha256": "491a2c7c9914d5f7b0a9b286d8200fdb7ce7002b73bd73821ce5aed3e1cb5be8"
       },
-      "record_count": 135,
+      "record_count": 136,
       "records": [
         {
           "game": "vag tuesday",
@@ -36364,6 +36444,22 @@
             59,
             35
           ]
+        },
+        {
+          "game": "vag tuesday",
+          "source_file": "vag tuesday.docx",
+          "source_table": 1,
+          "source_row": 137,
+          "source_date_text": "11th Aug, 26",
+          "source_draw_text": "77-5-35-43-39",
+          "draw_date": "2026-08-11",
+          "draw_numbers": [
+            77,
+            5,
+            35,
+            43,
+            39
+          ]
         }
       ]
     },
@@ -36371,9 +36467,9 @@
       "game": "vag wednesday",
       "source": {
         "file": "vag wednesday.docx",
-        "sha256": "74d52ea0442f167f4089049b8e6be87eb5878c79b57ba98842531ce40d3279bd"
+        "sha256": "41bc468dacb98a32e8fb39596e5632dd5dcdd81c039cc9665c63e9021a035731"
       },
-      "record_count": 135,
+      "record_count": 136,
       "records": [
         {
           "game": "vag wednesday",
@@ -38534,6 +38630,22 @@
             27,
             16
           ]
+        },
+        {
+          "game": "vag wednesday",
+          "source_file": "vag wednesday.docx",
+          "source_table": 1,
+          "source_row": 137,
+          "source_date_text": "12th Aug, 26",
+          "source_draw_text": "25-14-5-1-71",
+          "draw_date": "2026-08-12",
+          "draw_numbers": [
+            25,
+            14,
+            5,
+            1,
+            71
+          ]
         }
       ]
     },
@@ -38541,9 +38653,9 @@
       "game": "wednesday midweek",
       "source": {
         "file": "wednesday midweek.docx",
-        "sha256": "4adef8fa8c2afc46d41aa1b5a79675430e275995de4afcfb6317ff4f05cfc65e"
+        "sha256": "d3a73d92d3b4f4d2e6fc54b522f5c2fb344283974a5e2f7563b9ef91d9df56b0"
       },
-      "record_count": 136,
+      "record_count": 137,
       "records": [
         {
           "game": "wednesday midweek",
@@ -40720,9 +40832,25 @@
             36,
             55
           ]
+        },
+        {
+          "game": "wednesday midweek",
+          "source_file": "wednesday midweek.docx",
+          "source_table": 1,
+          "source_row": 138,
+          "source_date_text": "12th Aug, 26",
+          "source_draw_text": "12-27-41-36-2",
+          "draw_date": "2026-08-12",
+          "draw_numbers": [
+            12,
+            27,
+            41,
+            36,
+            2
+          ]
         }
       ]
     }
   ],
-  "dataset_sha256": "e4f70b5a955b4ec77fb6fa1cee9424d3d8b1c4550b85dcb63f21e46d03b9a3b1"
+  "dataset_sha256": "f29e3da624d5af4983dbd84188a3e1154844bca9f8780c5976cd6f41a70de0c2"
 }

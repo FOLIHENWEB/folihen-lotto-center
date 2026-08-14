@@ -14,7 +14,12 @@ type ApiResponse = {
   return_code?: number;
   game?: string;
   game_id?: number | string;
-  results?: unknown[];
+  results?: Array<{
+    engine?: string;
+    status?: string;
+    prediction?: unknown;
+    message?: string;
+  }>;
   [key: string]: unknown;
 };
 
@@ -39,6 +44,9 @@ const BottomActionBar: React.FC = () => {
     useState('');
 
   const [showPredictionDialog, setShowPredictionDialog] =
+    useState(false);
+
+  const [showTheresaDialog, setShowTheresaDialog] =
     useState(false);
 
   const [showMasterDataDialog, setShowMasterDataDialog] =
@@ -402,21 +410,34 @@ const BottomActionBar: React.FC = () => {
       const payload =
         (await response.json()) as ApiResponse;
 
-      if (!response.ok) {
-        throw new Error(
-          payload.message ||
-            `Prediction request failed (${response.status}).`,
+      const hasResults =
+        Array.isArray(payload.results);
+
+      if (hasResults) {
+        window.dispatchEvent(
+          new CustomEvent(
+            PREDICTION_EVENT,
+            {
+              detail: payload,
+            },
+          ),
         );
       }
 
-      if (
-        payload.status &&
-        payload.status !== 'success'
-      ) {
-        throw new Error(
+      if (!response.ok || payload.status !== 'success') {
+        const text =
           payload.message ||
-            'Prediction engines failed.',
+          `Prediction request failed (${response.status}).`;
+
+        setError(text);
+        setMessage(null);
+        addNotification(
+          payload.status === 'partial_failure'
+            ? 'warning'
+            : 'error',
+          text,
         );
+        return;
       }
 
       localStorage.setItem(
@@ -424,18 +445,14 @@ const BottomActionBar: React.FC = () => {
         JSON.stringify(payload),
       );
 
-      window.dispatchEvent(
-        new CustomEvent(
-          PREDICTION_EVENT,
-          {
-            detail: payload,
-          },
-        ),
-      );
-
       setMessage(
         payload.message ||
           'Prediction engines completed successfully.',
+      );
+      addNotification(
+        'success',
+        payload.message ||
+          `Prediction engines completed for ${game}.`,
       );
 
     } catch (err) {
@@ -471,8 +488,13 @@ const BottomActionBar: React.FC = () => {
 
     setRunningTheresa(true);
     setError(null);
+    setShowTheresaDialog(false);
 
     setMessage(
+      `Running Theresa for ${game}...`,
+    );
+    addNotification(
+      'info',
       `Running Theresa for ${game}...`,
     );
 
@@ -531,6 +553,11 @@ const BottomActionBar: React.FC = () => {
       setMessage(
         payload.message ||
           'Theresa completed successfully.',
+      );
+      addNotification(
+        'success',
+        payload.message ||
+          `Theresa completed for ${game}.`,
       );
     } catch (err) {
       const text =
@@ -635,9 +662,11 @@ const BottomActionBar: React.FC = () => {
           type="button"
           className="action-btn"
           disabled={runningTheresa}
-          onClick={() =>
-            void runTheresa()
-          }
+          onClick={() => {
+            setError(null);
+            setMessage(null);
+            setShowTheresaDialog(true);
+          }}
         >
           <span className="action-icon">
             ðŸ¤–
@@ -925,6 +954,54 @@ const BottomActionBar: React.FC = () => {
                   : 'Run Engines'}
               </button>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTheresaDialog && (
+        <div className="game-selector-overlay">
+          <div className="game-selector-modal">
+            <h2>Run Theresa</h2>
+            <p>Choose the canonical game for the Theresa Tier 1 run.</p>
+
+            <select
+              value={selectedGame}
+              disabled={loadingGames || runningTheresa}
+              onChange={event => setSelectedGame(event.target.value)}
+            >
+              <option value="">Choose game</option>
+              {games.map(game => (
+                <option
+                  key={`theresa-${game.game_id ?? ''}-${game.game}`}
+                  value={game.game}
+                >
+                  {game.game}
+                </option>
+              ))}
+            </select>
+
+            {error && (
+              <div className="master-data-warning">{error}</div>
+            )}
+
+            <div className="game-selector-actions">
+              <button
+                type="button"
+                className="master-secondary-btn"
+                disabled={runningTheresa}
+                onClick={() => setShowTheresaDialog(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="master-primary-btn"
+                disabled={runningTheresa || !selectedGame}
+                onClick={() => void runTheresa()}
+              >
+                {runningTheresa ? 'Running...' : 'Run Theresa'}
+              </button>
             </div>
           </div>
         </div>

@@ -13,9 +13,6 @@ const MASTER_DATA_STORAGE_KEY =
 const MASTER_DATA_EVENT =
   'theresa:master-data-updated';
 
-const PREDICTION_STORAGE_KEY =
-  'theresa:lastPredictionEngineRun';
-
 const PREDICTION_EVENT =
   'theresa:prediction-engines-complete';
 
@@ -128,34 +125,47 @@ const StatusBar: React.FC = () => {
     PREDICTION ENGINES
     ========================================================= */
 
-  const loadPredictionStatus = () => {
-    const stored =
-      localStorage.getItem(
-        PREDICTION_STORAGE_KEY,
-      );
-
-    if (!stored) {
-      setPredictionEnginesStatus(
-        'not-connected',
-      );
-
-      return;
-    }
-
+  const checkPredictionEngines = async () => {
     try {
-      const payload =
-        JSON.parse(stored);
+      const response = await fetch(
+        '/api/prediction-engines/latest',
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        },
+      );
+
+      if (response.status === 404) {
+        setPredictionEnginesStatus('connected');
+        return;
+      }
+
+      const payload = await response.json();
 
       const successful =
+        response.ok &&
         payload?.status === 'success' &&
         Array.isArray(payload?.results) &&
-        payload.results.length > 0 &&
+        payload.results.length === 2 &&
         payload.results.every(
           (result: {
             status?: string;
+            prediction?: {
+              top5?: unknown[];
+              top2?: unknown[];
+              banker?: unknown;
+              confidence?: unknown;
+            };
           }) =>
-            result.status ===
-            'success',
+            result.status === 'success' &&
+            Array.isArray(result.prediction?.top5) &&
+            result.prediction.top5.length > 0 &&
+            Array.isArray(result.prediction?.top2) &&
+            result.prediction.top2.length > 0 &&
+            result.prediction.banker !== undefined &&
+            result.prediction.confidence !== undefined,
         );
 
       setPredictionEnginesStatus(
@@ -165,7 +175,7 @@ const StatusBar: React.FC = () => {
       );
     } catch (error) {
       console.error(
-        'Unable to read prediction-engine status:',
+        'Prediction-engine connection check failed:',
         error,
       );
 
@@ -183,7 +193,7 @@ const StatusBar: React.FC = () => {
     void checkMasterData();
     void checkTheresa();
 
-    loadPredictionStatus();
+    void checkPredictionEngines();
 
     const savedMasterData =
       localStorage.getItem(
@@ -214,11 +224,18 @@ const StatusBar: React.FC = () => {
         );
       };
 
-    const handlePredictionComplete =
-      () => {
-        setPredictionEnginesStatus(
-          'connected',
-        );
+    const handlePredictionComplete = (event: Event) => {
+      const payload = (
+        event as CustomEvent<{
+          status?: string;
+        }>
+      ).detail;
+
+      setPredictionEnginesStatus(
+        payload?.status === 'success'
+          ? 'connected'
+          : 'not-connected',
+      );
       };
 
     window.addEventListener(

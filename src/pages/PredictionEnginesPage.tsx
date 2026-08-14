@@ -1,6 +1,7 @@
 // src/pages/PredictionEnginesPage.tsx
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNotifications } from '../contexts/NotificationContext';
 
 /* ============================================================
   TYPES
@@ -30,6 +31,7 @@ type EngineResult = {
 
   stdout?: string;
   stderr?: string;
+  message?: string;
 
   [key: string]: unknown;
 };
@@ -53,16 +55,6 @@ type GameOption = {
   HELPERS
   ============================================================ */
 
-const formatNumbers = (
-  values?: Array<number | string>,
-): string => {
-  if (!Array.isArray(values) || values.length === 0) {
-    return '—';
-  }
-
-  return values.join(', ');
-};
-
 const formatBanker = (
   value?: number | string | null,
 ): string => {
@@ -71,7 +63,7 @@ const formatBanker = (
     value === null ||
     value === ''
   ) {
-    return '—';
+    return 'Not returned';
   }
 
   return String(value);
@@ -85,7 +77,7 @@ const formatConfidence = (
     value === null ||
     Number.isNaN(value)
   ) {
-    return '—';
+    return 'Not returned';
   }
 
   /*
@@ -145,40 +137,171 @@ const normalizeGame = (
   };
 };
 
+type EnginePredictionPanelProps = {
+  engineName: 'Kadija' | 'Desmond';
+  version: string;
+  icon: string;
+  result: EngineResult | null;
+};
+
+const EnginePredictionPanel: React.FC<
+  EnginePredictionPanelProps
+> = ({ engineName, version, icon, result }) => {
+  const prediction = result?.prediction ?? null;
+
+  const numberList = (
+    values?: Array<number | string>,
+  ) => {
+    if (!Array.isArray(values) || values.length === 0) {
+      return (
+        <span className="engine-prediction-not-returned">
+          Not returned
+        </span>
+      );
+    }
+
+    return (
+      <div className="theresa-number-list">
+        {values.map((value, index) => (
+          <span
+            key={`${engineName}-${value}-${index}`}
+            className="theresa-number-chip"
+          >
+            {String(value).padStart(2, '0')}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const predictionCard = (
+    label: string,
+    title: string,
+    values?: Array<number | string>,
+    primary = false,
+  ) => (
+    <article
+      className={`theresa-prediction-card${
+        primary ? ' theresa-prediction-card--primary' : ''
+      }`}
+    >
+      <div className="theresa-card-heading">
+        <span>{label}</span>
+        <h3>{title}</h3>
+      </div>
+      {numberList(values)}
+    </article>
+  );
+
+  return (
+    <section className="engine-prediction-panel">
+      <div className="engine-output-header">
+        <div>
+          <span className="engine-output-icon">{icon}</span>
+          <div>
+            <h2>{engineName}</h2>
+            <p>Prediction Engine {version}</p>
+          </div>
+        </div>
+        <span className="engine-output-badge">Independent</span>
+      </div>
+
+      <div className="engine-output-state">
+        <strong>
+          {result?.status === 'success'
+            ? 'Structured output available'
+            : result?.status === 'error'
+              ? 'Engine output unavailable'
+              : 'Engine ready'}
+        </strong>
+        <span>
+          {prediction
+            ? `${engineName} prediction data was returned by the engine API.`
+            : result?.message ||
+              `Run the prediction engines to display ${engineName} output.`}
+        </span>
+      </div>
+
+      <div className="engine-prediction-meta">
+        <div>
+          <span>Banker</span>
+          <strong>{formatBanker(prediction?.banker)}</strong>
+        </div>
+        <div>
+          <span>Confidence</span>
+          <strong>{formatConfidence(prediction?.confidence)}</strong>
+        </div>
+      </div>
+
+      <div className="theresa-primary-grid">
+        {predictionCard('PRIMARY', 'Top 5', prediction?.top5, true)}
+        {predictionCard('FOCUSED', 'Top 2', prediction?.top2)}
+        {predictionCard('CORE', 'Top 10', prediction?.top10)}
+      </div>
+
+      <div className="theresa-extended-grid">
+        {predictionCard('EXTENDED', 'Top 20', prediction?.top20)}
+        {predictionCard('EXTENDED', 'Top 30', prediction?.top30)}
+      </div>
+
+      {predictionCard('FULL RANGE', 'Top 60', prediction?.top60)}
+
+      {result?.prediction_artifact && (
+        <div className="engine-output-artifact">
+          <span>Prediction artifact</span>
+          <code>{result.prediction_artifact}</code>
+        </div>
+      )}
+    </section>
+  );
+};
+
 /* ============================================================
   PAGE
   ============================================================ */
 
 const PredictionEnginesPage: React.FC = () => {
+  const { addNotification } = useNotifications();
   const [games, setGames] = useState<GameOption[]>([]);
   const [selectedGame, setSelectedGame] =
     useState<string>('');
 
   const [runData, setRunData] =
     useState<PredictionRunResponse | null>(null);
-useEffect(() => {
-  const storageKey =
-    'theresa:lastPredictionEngineRun';
-
+  useEffect(() => {
   const eventName =
     'theresa:prediction-engines-complete';
 
-  const loadSavedResult = () => {
-    const saved =
-      localStorage.getItem(storageKey);
-
-    if (!saved) {
-      return;
-    }
-
+  const loadLatestResult = async () => {
     try {
-      const parsed =
-        JSON.parse(saved) as PredictionRunResponse;
+      const response = await fetch(
+        '/api/prediction-engines/latest',
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        },
+      );
 
-      setRunData(parsed);
+      if (response.status === 404) {
+        return;
+      }
+
+      const payload =
+        (await response.json()) as PredictionRunResponse;
+
+      if (!response.ok || payload.status !== 'success') {
+        throw new Error(
+          payload.message ||
+            `Could not load latest prediction (${response.status}).`,
+        );
+      }
+
+      setRunData(payload);
     } catch (error) {
       console.error(
-        'Unable to read saved prediction result:',
+        'Unable to load latest prediction result:',
         error,
       );
     }
@@ -197,7 +320,7 @@ useEffect(() => {
     }
   };
 
-  loadSavedResult();
+  void loadLatestResult();
 
   window.addEventListener(
     eventName,
@@ -210,7 +333,7 @@ useEffect(() => {
       handlePredictionComplete,
     );
   };
-}, []);
+  }, []);
 
   const [loadingGames, setLoadingGames] =
     useState<boolean>(false);
@@ -295,16 +418,13 @@ useEffect(() => {
         }
       } catch (err) {
         if (!cancelled) {
-          console.error(
-            'Unable to load prediction games:',
-            err,
-          );
+          const message =
+            err instanceof Error
+              ? err.message
+              : 'Unable to load prediction games.';
 
-          /*
-          * Do not make the whole page unusable.
-          * The user can still type/select a game
-          * if the endpoint is temporarily unavailable.
-          */
+          setError(message);
+          addNotification('error', message);
         }
       } finally {
         if (!cancelled) {
@@ -343,12 +463,6 @@ useEffect(() => {
       ) ?? null
     );
   }, [runData]);
-
-  const kadijaPrediction =
-    kadija?.prediction ?? null;
-
-  const desmondPrediction =
-    desmond?.prediction ?? null;
 
   /* ==========================================================
     RUN ENGINES
@@ -394,24 +508,38 @@ useEffect(() => {
         (await response.json()) as
           PredictionRunResponse;
 
-      if (!response.ok) {
-        throw new Error(
-          payload.message ||
-            `Prediction request failed (${response.status}).`,
-        );
-      }
-
-      if (
-        payload.status &&
-        payload.status !== 'success'
-      ) {
-        throw new Error(
-          payload.message ||
-            'Prediction engines did not complete successfully.',
-        );
-      }
-
       setRunData(payload);
+
+      if (!response.ok || payload.status !== 'success') {
+        const message =
+          payload.message ||
+          `Prediction request failed (${response.status}).`;
+
+        setError(message);
+        addNotification(
+          payload.status === 'partial_failure'
+            ? 'warning'
+            : 'error',
+          message,
+        );
+        return;
+      }
+
+      localStorage.setItem(
+        'theresa:lastPredictionEngineRun',
+        JSON.stringify(payload),
+      );
+      window.dispatchEvent(
+        new CustomEvent(
+          'theresa:prediction-engines-complete',
+          { detail: payload },
+        ),
+      );
+      addNotification(
+        'success',
+        payload.message ||
+          `Prediction engines completed for ${gameName}.`,
+      );
     } catch (err) {
       const message =
         err instanceof Error
@@ -565,318 +693,19 @@ useEffect(() => {
           ENGINE CARDS
           ====================================================== */}
 
-      <section className="prediction-engines-grid">
+      <EnginePredictionPanel
+        engineName="Kadija"
+        version="v4"
+        icon="♟️"
+        result={kadija}
+      />
 
-        {/* ====================================================
-            KADIJA
-            ==================================================== */}
-
-        <article className="engine-output-card">
-          <div className="engine-output-header">
-            <div>
-              <span className="engine-output-icon">
-                ♟️
-              </span>
-
-              <div>
-                <h2>Kadija</h2>
-                <p>
-                  Prediction Engine v4
-                </p>
-              </div>
-            </div>
-
-            <span className="engine-output-badge">
-              Independent
-            </span>
-          </div>
-
-          <div className="engine-output-state">
-            <strong>
-              {kadija?.status ===
-              'success'
-                ? 'Structured output available'
-                : 'Engine ready'}
-            </strong>
-
-            <span>
-              {kadijaPrediction
-                ? 'Kadija prediction data was returned successfully by the engine API.'
-                : 'Run the prediction engines to display Kadija output.'}
-            </span>
-          </div>
-
-          <div className="engine-output-summary">
-            <div>
-              <span>Top 5</span>
-
-              <strong>
-                {formatNumbers(
-                  kadijaPrediction?.top5,
-                )}
-              </strong>
-            </div>
-
-            <div>
-              <span>Top 2</span>
-
-              <strong>
-                {formatNumbers(
-                  kadijaPrediction?.top2,
-                )}
-              </strong>
-            </div>
-
-            <div>
-              <span>Banker</span>
-
-              <strong>
-                {formatBanker(
-                  kadijaPrediction?.banker,
-                )}
-              </strong>
-            </div>
-
-            <div>
-              <span>
-                Confidence
-              </span>
-
-              <strong>
-                {formatConfidence(
-                  kadijaPrediction?.confidence,
-                )}
-              </strong>
-            </div>
-          </div>
-
-          {kadija?.prediction_artifact && (
-            <div className="engine-output-artifact">
-              <span>
-                Prediction artifact
-              </span>
-
-              <code>
-                {
-                  kadija.prediction_artifact
-                }
-              </code>
-            </div>
-          )}
-        </article>
-
-        {/* ====================================================
-            DESMOND
-            ==================================================== */}
-
-        <article className="engine-output-card engine-output-card--featured">
-          <div className="engine-output-header">
-            <div>
-              <span className="engine-output-icon">
-                🔮
-              </span>
-
-              <div>
-                <h2>Desmond</h2>
-                <p>
-                  Prediction Engine v2
-                </p>
-              </div>
-            </div>
-
-            <span className="engine-output-badge">
-              Independent
-            </span>
-          </div>
-
-          <div className="engine-output-state">
-            <strong>
-              {desmond?.status ===
-              'success'
-                ? 'Structured output available'
-                : 'Engine ready'}
-            </strong>
-
-            <span>
-              {desmondPrediction
-                ? 'Desmond prediction data was returned successfully by the engine API.'
-                : 'Run the prediction engines to display Desmond output.'}
-            </span>
-          </div>
-
-          <div className="engine-output-summary">
-            <div>
-              <span>Top 5</span>
-
-              <strong>
-                {formatNumbers(
-                  desmondPrediction?.top5,
-                )}
-              </strong>
-            </div>
-
-            <div>
-              <span>Top 2</span>
-
-              <strong>
-                {formatNumbers(
-                  desmondPrediction?.top2,
-                )}
-              </strong>
-            </div>
-
-            <div>
-              <span>Banker</span>
-
-              <strong>
-                {formatBanker(
-                  desmondPrediction?.banker,
-                )}
-              </strong>
-            </div>
-
-            <div>
-              <span>
-                Confidence
-              </span>
-
-              <strong>
-                {formatConfidence(
-                  desmondPrediction?.confidence,
-                )}
-              </strong>
-            </div>
-          </div>
-
-          {desmond?.prediction_artifact && (
-            <div className="engine-output-artifact">
-              <span>
-                Prediction artifact
-              </span>
-
-              <code>
-                {
-                  desmond.prediction_artifact
-                }
-              </code>
-            </div>
-          )}
-        </article>
-      </section>
-
-      {/* ======================================================
-          KADIJA DETAIL
-          ====================================================== */}
-
-      {kadijaPrediction && (
-        <section className="engine-detail-section">
-          <div className="engine-detail-heading">
-            <div>
-              <span>KADIJA</span>
-
-              <h2>
-                Prediction Detail
-              </h2>
-            </div>
-          </div>
-
-          <article className="engine-detail-card">
-            <h3>Top 5</h3>
-
-            <span>
-              {formatNumbers(
-                kadijaPrediction.top5,
-              )}
-            </span>
-          </article>
-
-          <article className="engine-detail-card">
-            <h3>Top 2</h3>
-
-            <span>
-              {formatNumbers(
-                kadijaPrediction.top2,
-              )}
-            </span>
-          </article>
-
-          <article className="engine-detail-card">
-            <h3>Banker</h3>
-
-            <span>
-              {formatBanker(
-                kadijaPrediction.banker,
-              )}
-            </span>
-          </article>
-
-          <article className="engine-detail-card">
-            <h3>Confidence</h3>
-
-            <span>
-              {formatConfidence(
-                kadijaPrediction.confidence,
-              )}
-            </span>
-          </article>
-        </section>
-      )}
-
-      {/* ======================================================
-          DESMOND EXTENDED OUTPUT
-          ====================================================== */}
-
-      <section className="engine-detail-section">
-        <div className="engine-detail-heading">
-          <div>
-            <span>DESMOND</span>
-
-            <h2>
-              Extended Prediction Levels
-            </h2>
-          </div>
-        </div>
-
-        <article className="engine-detail-card">
-          <h3>Top 10</h3>
-
-          <span>
-            {formatNumbers(
-              desmondPrediction?.top10,
-            )}
-          </span>
-        </article>
-
-        <article className="engine-detail-card">
-          <h3>Top 20</h3>
-
-          <span>
-            {formatNumbers(
-              desmondPrediction?.top20,
-            )}
-          </span>
-        </article>
-
-        <article className="engine-detail-card">
-          <h3>Top 30</h3>
-
-          <span>
-            {formatNumbers(
-              desmondPrediction?.top30,
-            )}
-          </span>
-        </article>
-
-        <article className="engine-detail-card">
-          <h3>Top 60</h3>
-
-          <span>
-            {formatNumbers(
-              desmondPrediction?.top60,
-            )}
-          </span>
-        </article>
-      </section>
+      <EnginePredictionPanel
+        engineName="Desmond"
+        version="v2"
+        icon="🔮"
+        result={desmond}
+      />
 
       {/* ======================================================
           ARCHITECTURE NOTE

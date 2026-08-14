@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -20,6 +21,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from normalized_data import execute as execute_normalization
 from master_data_writer import append_draw, MasterDataWriteError
+from engine_data_service import DataServiceError, get_data_service
 
 THERESA_DIR = BACKEND_DIR / "theresa"
 THERESA_ENGINE = THERESA_DIR / "theresa_engine_toc.py"
@@ -80,6 +82,125 @@ def _save_latest_prediction_run(payload: dict) -> None:
     temp_path.replace(PREDICTION_LATEST_FILE)
 
 
+def _engine_prediction_is_usable(result: Any) -> bool:
+    if not isinstance(result, dict) or result.get("status") != "success":
+        return False
+
+    prediction = result.get("prediction")
+    if not isinstance(prediction, dict):
+        return False
+
+    if not all(
+        _prediction_number_list(prediction.get(field_name))
+        for field_name in ("top5", "top2")
+    ):
+        return False
+
+    try:
+        int(prediction.get("banker"))
+    except (TypeError, ValueError):
+        return False
+
+    confidence = prediction.get("confidence")
+    return (
+        isinstance(confidence, (int, float))
+        and not isinstance(confidence, bool)
+    )
+
+
+def _prediction_run_is_usable(payload: Any) -> bool:
+    if not isinstance(payload, dict) or payload.get("status") != "success":
+        return False
+
+    results = payload.get("results")
+    return (
+        isinstance(results, list)
+        and len(results) == 2
+        and all(_engine_prediction_is_usable(result) for result in results)
+    )
+
+
+def _iso_mtime(path: Path) -> str:
+    return datetime.fromtimestamp(
+        path.stat().st_mtime,
+        tz=timezone.utc,
+    ).isoformat()
+
+
+def _read_json_file(path: Path) -> Optional[dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+    return data if isinstance(data, dict) else None
+
+
+def _persisted_prediction_run() -> Optional[dict[str, Any]]:
+    if not PREDICTION_LATEST_FILE.is_file():
+        return None
+
+    payload = _read_json_file(PREDICTION_LATEST_FILE)
+    return payload if _prediction_run_is_usable(payload) else None
+
+
+def _theresa_history_entries() -> list[dict[str, Any]]:
+    if not THERESA_OUTPUT_DIR.is_dir():
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for path in THERESA_OUTPUT_DIR.glob("Theresa_*.json"):
+        prediction = _read_json_file(path)
+        if prediction is None:
+            continue
+
+        entries.append(
+            {
+                "id": str(path),
+                "timestamp": (
+                    prediction.get("generated")
+                    or prediction.get("prediction_date")
+                    or _iso_mtime(path)
+                ),
+                "game": prediction.get("game") or prediction.get("target_game"),
+                "operation": "Theresa",
+                "source": "Theresa",
+                "status": "success",
+                "summary": "Persisted Theresa prediction output.",
+                "artifact": str(path),
+                "prediction": prediction,
+            }
+        )
+
+    return entries
+
+
+def _operation_history() -> list[dict[str, Any]]:
+    entries = _theresa_history_entries()
+    prediction_run = _persisted_prediction_run()
+
+    if prediction_run is not None:
+        entries.append(
+            {
+                "id": str(PREDICTION_LATEST_FILE),
+                "timestamp": _iso_mtime(PREDICTION_LATEST_FILE),
+                "game": prediction_run.get("game"),
+                "operation": "Prediction Engines",
+                "source": "Kadija + Desmond",
+                "status": prediction_run.get("status"),
+                "summary": prediction_run.get("message"),
+                "artifact": str(PREDICTION_LATEST_FILE),
+                "results": prediction_run.get("results", []),
+            }
+        )
+
+    return sorted(
+        entries,
+        key=lambda entry: str(entry.get("timestamp") or ""),
+        reverse=True,
+    )
+
+
 @app.get("/api/prediction-engines/latest")
 def prediction_engines_latest():
     if not PREDICTION_LATEST_FILE.is_file():
@@ -118,6 +239,20 @@ def prediction_engines_latest():
                 }
             ),
             500,
+        )
+
+    if not _prediction_run_is_usable(payload):
+        return (
+            jsonify(
+                {
+                    "status": "not_found",
+                    "message": (
+                        "The saved prediction-engine result is incomplete "
+                        "and cannot be displayed as a successful run."
+                    ),
+                }
+            ),
+            404,
         )
 
     return jsonify(payload), 200
@@ -259,6 +394,13 @@ def _resolve_kadija_game_id(game_name: str) -> int:
     return int(game_id)
 
 
+def _canonical_game_name(game_name: str) -> str:
+    if not isinstance(game_name, str) or not game_name.strip():
+        raise ValueError("A game must be selected.")
+
+    return get_data_service().canonical_game_name(game_name)
+
+
 def _run_prediction_engine(
     *,
     engine_name: str,
@@ -286,30 +428,42 @@ def _run_prediction_engine(
             "--game",
             game_name,
         ]
-
-        completed = subprocess.run(
-            command,
-            cwd=str(BACKEND_DIR),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
+        run_kwargs: dict[str, Any] = {}
     else:
         command = [
             sys.executable,
             str(script_path),
         ]
+        run_kwargs = {"input": f"{game_id}\n"}
 
+    try:
         completed = subprocess.run(
             command,
             cwd=str(BACKEND_DIR),
             env=env,
-            input=f"{game_id}\n",
             capture_output=True,
             text=True,
             timeout=600,
+            **run_kwargs,
         )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "engine": engine_name,
+            "status": "error",
+            "message": "Engine execution timed out after 600 seconds.",
+            "return_code": None,
+            "stdout": (exc.stdout or "").strip(),
+            "stderr": (exc.stderr or "").strip(),
+        }
+    except OSError as exc:
+        return {
+            "engine": engine_name,
+            "status": "error",
+            "message": f"Engine process could not be started: {exc}",
+            "return_code": None,
+            "stdout": "",
+            "stderr": "",
+        }
 
     stdout = (completed.stdout or "").strip()
     stderr = (completed.stderr or "").strip()
@@ -318,6 +472,7 @@ def _run_prediction_engine(
         return {
             "engine": engine_name,
             "status": "error",
+            "message": "Engine exited with a non-zero status.",
             "return_code": completed.returncode,
             "stdout": stdout,
             "stderr": stderr,
@@ -389,27 +544,11 @@ def theresa_latest():
 @app.get("/api/master-data/games")
 def master_data_games():
     try:
-        if not KADIJA_ENGINE.exists():
-            raise RuntimeError(
-                f"Kadija engine not found: {KADIJA_ENGINE}"
-            )
-
-        namespace = runpy.run_path(str(KADIJA_ENGINE))
-        games = namespace.get("GAMES")
-
-        if not isinstance(games, dict):
-            raise RuntimeError(
-                "Kadija GAMES registry was not found."
-            )
-
         payload = [
             {
-                "game_id": int(game_id),
-                "game": str(info["name"]),
+                "game": game,
             }
-            for game_id, info in sorted(games.items())
-            if isinstance(info, dict)
-            and "name" in info
+            for game in get_data_service().games()
         ]
 
         return jsonify(
@@ -418,17 +557,151 @@ def master_data_games():
                 "games": payload,
             }
         )
-
-    except Exception as exc:
+    except DataServiceError as exc:
         return (
             jsonify(
                 {
                     "status": "error",
-                    "message": str(exc),
+                    "message": f"Canonical MASTER_DATA is unavailable: {exc}",
                 }
             ),
             500,
         )
+
+
+@app.get("/api/master-data/summary")
+def master_data_summary():
+    try:
+        service = get_data_service()
+        return jsonify(
+            {
+                "status": "success",
+                "dataset": service.dataset_info().as_dict(),
+                "games": [
+                    game_info.as_dict()
+                    for game_info in service.all_game_info()
+                ],
+            }
+        )
+    except DataServiceError as exc:
+        return jsonify(
+            {
+                "status": "error",
+                "message": f"Canonical MASTER_DATA is unavailable: {exc}",
+            }
+        ), 500
+
+
+@app.get("/api/master-data/games/<path:game_name>")
+def master_data_game_detail(game_name: str):
+    try:
+        service = get_data_service()
+        canonical_game = service.canonical_game_name(game_name)
+        records = service.history(
+            canonical_game,
+            limit=10,
+            newest_first=True,
+        )
+        return jsonify(
+            {
+                "status": "success",
+                "game": service.game_info(canonical_game).as_dict(),
+                "recent_records": [
+                    record.as_dict()
+                    for record in records
+                ],
+            }
+        )
+    except (DataServiceError, ValueError) as exc:
+        return jsonify(
+            {
+                "status": "error",
+                "message": str(exc),
+            }
+        ), 404
+
+
+@app.get("/api/history")
+def history():
+    game_filter = request.args.get("game", "").strip()
+    operation_filter = request.args.get("operation", "").strip()
+
+    entries = _operation_history()
+    if game_filter:
+        normalized_game = normalize_game_name(game_filter)
+        entries = [
+            entry for entry in entries
+            if normalize_game_name(str(entry.get("game") or ""))
+            == normalized_game
+        ]
+
+    if operation_filter:
+        entries = [
+            entry for entry in entries
+            if entry.get("operation") == operation_filter
+        ]
+
+    return jsonify(
+        {
+            "status": "success",
+            "records": entries,
+        }
+    )
+
+
+@app.get("/api/reports")
+def reports():
+    game_filter = request.args.get("game", "").strip()
+    source_filter = request.args.get("source", "").strip()
+    rows: list[dict[str, Any]] = []
+
+    for entry in _operation_history():
+        if entry.get("operation") == "Prediction Engines":
+            for result in entry.get("results", []):
+                if not isinstance(result, dict):
+                    continue
+                rows.append(
+                    {
+                        "timestamp": entry.get("timestamp"),
+                        "game": entry.get("game"),
+                        "source": result.get("engine"),
+                        "status": result.get("status"),
+                        "prediction": result.get("prediction", {}),
+                        "artifact": result.get("prediction_artifact"),
+                    }
+                )
+        elif entry.get("operation") == "Theresa":
+            rows.append(
+                {
+                    "timestamp": entry.get("timestamp"),
+                    "game": entry.get("game"),
+                    "source": "Theresa",
+                    "status": entry.get("status"),
+                    "prediction": entry.get("prediction", {}),
+                    "artifact": entry.get("artifact"),
+                }
+            )
+
+    if game_filter:
+        normalized_game = normalize_game_name(game_filter)
+        rows = [
+            row for row in rows
+            if normalize_game_name(str(row.get("game") or ""))
+            == normalized_game
+        ]
+
+    if source_filter:
+        rows = [
+            row for row in rows
+            if row.get("source") == source_filter
+        ]
+
+    return jsonify(
+        {
+            "status": "success",
+            "reports": rows,
+        }
+    )
 
 @app.post("/api/master-data/update")
 def update_master_data():
@@ -580,6 +853,9 @@ def _prediction_number_list(value: Any) -> list[int]:
         numbers: list[int] = []
 
         for item in value:
+            if isinstance(item, dict):
+                item = item.get("number")
+
             try:
                 numbers.append(int(item))
             except (TypeError, ValueError):
@@ -852,28 +1128,61 @@ def _enrich_engine_result(
 
     return enriched
 
+
+def _validate_engine_prediction_result(
+    result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Require the fields the Prediction Engines UI needs before success."""
+    if result.get("status") != "success":
+        return result
+
+    if not _engine_prediction_is_usable(result):
+        prediction = result.get("prediction")
+        if not isinstance(prediction, dict):
+            prediction = {}
+
+        missing: list[str] = []
+        for field_name in ("top5", "top2"):
+            if not _prediction_number_list(prediction.get(field_name)):
+                missing.append(field_name)
+
+        try:
+            int(prediction.get("banker"))
+        except (TypeError, ValueError):
+            missing.append("banker")
+
+        confidence = prediction.get("confidence")
+        if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
+            missing.append("confidence")
+
+        invalid = dict(result)
+        invalid["status"] = "error"
+        invalid["message"] = (
+            "Engine exited successfully but did not return usable "
+            f"prediction fields: {', '.join(missing)}."
+        )
+        return invalid
+
+    return result
+
 @app.post("/api/prediction-engines/run")
 def prediction_engines_run():
     payload = request.get_json(silent=True) or {}
 
-    game_name = str(
-        payload.get(
-            "game",
-            DEFAULT_TARGET_GAME,
-        )
-    ).strip()
+    game_name = payload.get("game")
 
     try:
+        canonical_game = _canonical_game_name(game_name)
         game_id = _resolve_kadija_game_id(
-            game_name
+            canonical_game
         )
 
     except Exception as exc:
         return jsonify(
             {
                 "status": "error",
-                "message": f"Could not resolve game ID: {exc}",
-                "game": game_name,
+                "message": f"Could not validate selected game: {exc}",
+                "game": game_name if isinstance(game_name, str) else "",
             }
         ), 400
 
@@ -881,19 +1190,21 @@ def prediction_engines_run():
             _run_prediction_engine(
                 engine_name="Kadija",
                 script_path=KADIJA_ENGINE,
-                game_name=game_name,
+                game_name=canonical_game,
                 game_id=game_id,
             ),
             _run_prediction_engine(
                 engine_name="Desmond",
                 script_path=DESMOND_ENGINE,
-                game_name=game_name,
+                game_name=canonical_game,
                 game_id=game_id,
             ),
         ]
 
     results = [
-        _enrich_engine_result(result)
+        _validate_engine_prediction_result(
+            _enrich_engine_result(result)
+        )
         for result in results
     ]
 
@@ -904,12 +1215,22 @@ def prediction_engines_run():
         ]
 
     if failed:
+            overall_status = (
+                "error"
+                if len(failed) == len(results)
+                else "partial_failure"
+            )
+            message = (
+                "Prediction engines failed."
+                if overall_status == "error"
+                else "One or more prediction engines failed."
+            )
             return (
                 jsonify(
                     {
-                        "status": "partial_failure",
-                        "message": "One or more prediction engines failed.",
-                        "game": game_name,
+                        "status": overall_status,
+                        "message": message,
+                        "game": canonical_game,
                         "game_id": game_id,
                         "results": results,
                     }
@@ -920,7 +1241,7 @@ def prediction_engines_run():
     success_payload = {
             "status": "success",
             "message": "Prediction engines completed successfully.",
-            "game": game_name,
+            "game": canonical_game,
             "game_id": game_id,
             "results": results,
         }
@@ -935,7 +1256,7 @@ def prediction_engines_run():
                             "Prediction engines completed, but the "
                             "latest result could not be saved."
                         ),
-                        "game": game_name,
+                        "game": canonical_game,
                         "game_id": game_id,
                         "results": results,
                         "detail": str(exc),

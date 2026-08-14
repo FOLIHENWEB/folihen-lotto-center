@@ -26,7 +26,7 @@ const DashboardPage: React.FC = () => {
 
           <div>
             <strong>Prediction Engines</strong>
-            <span>Operational workspace</span>
+            <span>Engine control workspace</span>
           </div>
         </div>
 
@@ -35,7 +35,7 @@ const DashboardPage: React.FC = () => {
 
           <div>
             <strong>Theresa</strong>
-            <span>Tier 1 available</span>
+            <span>Tier 1 prediction output</span>
           </div>
         </div>
 
@@ -53,7 +53,7 @@ const DashboardPage: React.FC = () => {
 
           <div>
             <strong>TOC</strong>
-            <span>Interface ready</span>
+            <span>Local operations interface</span>
           </div>
         </div>
       </section>
@@ -80,7 +80,7 @@ const DashboardPage: React.FC = () => {
           </div>
 
           <div className="prediction-workspace-status">
-            Ready for next run
+            Use Prediction Engines to run a game
           </div>
         </div>
 

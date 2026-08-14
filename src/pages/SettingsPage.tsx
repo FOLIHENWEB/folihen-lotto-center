@@ -5,8 +5,7 @@ const SettingsPage: React.FC = () => {
   return (
     <div className="placeholder-page">
       <h1>Settings</h1>
-      <p>This is the Settings placeholder page. Content coming soon.</p>
-      <p><em>Interface ready – no backend connected.</em></p>
+      <p>Settings are not implemented in this phase.</p>
     </div>
   );
 };
