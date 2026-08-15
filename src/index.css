@@ -1019,6 +1019,322 @@ body {
 }
 
 /* =========================================================
+  NORMALIZATION PREVIEW REPORT
+  ========================================================= */
+
+.normalization-report-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(980px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.normalization-report-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.normalization-report-eyebrow {
+  margin: 0 0 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.normalization-report-header h2,
+.normalization-report-header p {
+  margin: 0;
+}
+
+.normalization-report-header h2 {
+  font-size: 22px;
+}
+
+.normalization-report-status {
+  margin-top: 6px !important;
+  color: #16a34a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.normalization-report-close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.normalization-report-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px 8px;
+  background: var(--bg-secondary);
+}
+
+.normalization-loading {
+  margin: 24px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.normalization-section,
+.normalization-apply-summary {
+  margin-bottom: 18px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.normalization-section h3,
+.normalization-apply-summary h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.normalization-section p,
+.normalization-apply-summary p,
+.normalization-apply-summary li {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.normalization-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.normalization-summary-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.normalization-summary-item span {
+  color: var(--text-secondary);
+}
+
+.normalization-summary-item strong {
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+.normalization-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+}
+
+.normalization-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.normalization-table th,
+.normalization-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+
+.normalization-table th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.normalization-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.normalization-table small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.normalization-theresa-section {
+  border-left: 4px solid #0ea5a4;
+}
+
+.normalization-review-section {
+  border-left: 4px solid #eab308;
+}
+
+.normalization-review-section h3 span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #eab308;
+  color: #1a1a1a;
+  font-size: 13px;
+}
+
+.normalization-engine-review {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.normalization-resolution-methods {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid #16a34a;
+  border-radius: 5px;
+}
+
+.normalization-resolution-methods h4,
+.normalization-resolution-methods p {
+  margin: 0;
+}
+
+.normalization-resolution-methods > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.normalization-resolution-methods strong {
+  color: var(--text-primary);
+}
+
+.normalization-resolution-methods p {
+  grid-column: 1 / -1;
+  font-size: 12px;
+}
+
+.normalization-details-toggle {
+  margin-top: 14px;
+  border: 0;
+  background: transparent;
+  color: #0ea5a4;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.normalization-artifact-path {
+  max-width: 220px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.normalization-apply-summary {
+  border-left: 4px solid #16a34a;
+}
+
+.normalization-apply-summary ul {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+
+.normalization-safety-notice {
+  padding: 12px;
+  border: 1px solid #16a34a;
+  border-radius: 5px;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.normalization-apply-counts {
+  margin-bottom: 0 !important;
+}
+
+.normalization-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px 20px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+}
+
+.normalization-confirmation {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.normalization-confirmation > div {
+  width: min(480px, 100%);
+  padding: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.4);
+}
+
+.normalization-confirmation h3,
+.normalization-confirmation p {
+  margin-top: 0;
+}
+
+.normalization-confirmation p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.normalization-confirmation > div > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* =========================================================
   TABLET
   ========================================================= */
 
@@ -1062,6 +1378,32 @@ body {
     max-height: 92vh;
     border-radius: 16px 16px 0 0;
     padding: 16px;
+  }
+
+  .normalization-report-modal {
+    width: 100%;
+    max-height: 94vh;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .normalization-report-header,
+  .normalization-report-body,
+  .normalization-report-actions {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .normalization-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .normalization-report-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .normalization-report-actions .master-primary-btn {
+    grid-column: span 2;
   }
 
   .master-number-grid {

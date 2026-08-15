@@ -11,8 +11,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+import threading
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, g, request
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIR = APP_ROOT / "backend"
@@ -23,6 +24,8 @@ if str(BACKEND_DIR) not in sys.path:
 from normalized_data import execute as execute_normalization
 from master_data_writer import append_draw, MasterDataWriteError
 from engine_data_service import DataServiceError, get_data_service
+from prediction_normalizer import PredictionDateNormalizer
+from daily_cycle import DailyCycleService, RunContext
 
 THERESA_DIR = BACKEND_DIR / "theresa"
 THERESA_ENGINE = THERESA_DIR / "theresa_engine_toc.py"
@@ -92,6 +95,41 @@ THERESA_OUTPUT_DIR = (
 DEFAULT_TARGET_GAME = "vag friday"
 
 app = Flask(__name__)
+ENGINE_EXECUTION_LOCK = threading.Lock()
+NORMALIZER = PredictionDateNormalizer(
+    get_data_service(),
+)
+DAILY_CYCLE: Optional[DailyCycleService] = None
+
+ENGINE_EXECUTION_PATHS = {
+    "/api/prediction-engines/run",
+    "/api/theresa/run",
+    "/api/theresa-intelligence/run",
+}
+
+
+@app.before_request
+def protect_normalization_concurrency():
+    if request.path in ENGINE_EXECUTION_PATHS:
+        if NORMALIZER.status()["running"]:
+            return jsonify({
+                "status": "error",
+                "message": "Cannot run a prediction while normalization is applying.",
+            }), 409
+        if not ENGINE_EXECUTION_LOCK.acquire(blocking=False):
+            return jsonify({
+                "status": "error",
+                "message": "Another prediction operation is already running.",
+            }), 409
+        g.engine_execution_lock_acquired = True
+    return None
+
+
+@app.after_request
+def release_engine_execution_lock(response):
+    if getattr(g, "engine_execution_lock_acquired", False):
+        ENGINE_EXECUTION_LOCK.release()
+    return response
 
 PREDICTION_LATEST_FILE = (
     BACKEND_DIR
@@ -569,6 +607,7 @@ def _normalize_research_prediction(
 
 def run_theresa_research(
     target_game: str,
+    run_context: Optional[RunContext] = None,
 ) -> dict[str, Any]:
     if not THERESA_RESEARCH_PROJECT_DIR.is_dir():
         raise FileNotFoundError(
@@ -604,6 +643,9 @@ def run_theresa_research(
         "--game",
         str(registry_id),
     ]
+    env = os.environ.copy()
+    if run_context is not None:
+        env.update(_run_context_environment(run_context))
     started = time.perf_counter()
     try:
         completed = subprocess.run(
@@ -612,6 +654,7 @@ def run_theresa_research(
             capture_output=True,
             text=True,
             timeout=600,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
@@ -687,6 +730,7 @@ def run_theresa(
     lookback: int = 0,
     trigger_depth: int = 3,
     min_consistency: int = 2,
+    run_context: Optional[RunContext] = None,
 ) -> Dict[str, Any]:
     if not THERESA_ENGINE.exists():
         raise FileNotFoundError(
@@ -712,6 +756,8 @@ def run_theresa(
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(BACKEND_DIR)
+    if run_context is not None:
+        env.update(_run_context_environment(run_context))
 
     completed = subprocess.run(
         cmd,
@@ -775,12 +821,29 @@ def _canonical_game_name(game_name: str) -> str:
     return get_data_service().canonical_game_name(game_name)
 
 
+def _run_context_environment(context: RunContext) -> dict[str, str]:
+    return {
+        "TOC_RUN_MODE": context.run_mode,
+        "TOC_TARGET_DRAW_DATE": context.target_draw_date,
+        "TOC_DATA_CUTOFF_DATE": context.data_cutoff_date or "",
+        "TOC_RUN_CONTEXT_ID": context.run_timestamp,
+    }
+
+
+def _cutoff_acknowledged(context: RunContext) -> bool:
+    if not context.data_cutoff_date:
+        return False
+    visible = get_data_service(context.data_cutoff_date).visible_range()
+    return visible["target_and_later_excluded"] and visible["latest_visible_date"] < context.target_draw_date
+
+
 def _run_prediction_engine(
     *,
     engine_name: str,
     script_path: Path,
     game_name: str,
     game_id: int,
+    run_context: Optional[RunContext] = None,
 ) -> dict:
     if not script_path.exists():
         return {
@@ -794,6 +857,8 @@ def _run_prediction_engine(
     env = os.environ.copy()
     env["PYTHONPATH"] = str(BACKEND_DIR)
     env["RUN_TYPE"] = "prediction"
+    if run_context is not None:
+        env.update(_run_context_environment(run_context))
 
     if engine_name.lower() == "desmond":
         command = [
@@ -994,6 +1059,64 @@ def master_data_summary():
                 "message": f"Canonical MASTER_DATA is unavailable: {exc}",
             }
         ), 500
+
+
+@app.get("/api/normalization/status")
+def normalization_status():
+    return jsonify({
+        **NORMALIZER.status(),
+        "engine_operation_running": ENGINE_EXECUTION_LOCK.locked(),
+    })
+
+
+@app.post("/api/normalization/preview")
+def normalization_preview():
+    try:
+        return jsonify(NORMALIZER.preview())
+    except DataServiceError as exc:
+        return jsonify({
+            "status": "error",
+            "message": f"Canonical MASTER_DATA is unavailable: {exc}",
+        }), 500
+
+
+@app.post("/api/normalization/apply")
+def normalization_apply():
+    if ENGINE_EXECUTION_LOCK.locked():
+        return jsonify({
+            "status": "error",
+            "message": "Cannot normalize while a prediction cycle is running.",
+        }), 409
+    try:
+        return jsonify(NORMALIZER.apply())
+    except RuntimeError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 409
+    except DataServiceError as exc:
+        return jsonify({
+            "status": "error",
+            "message": f"Canonical MASTER_DATA is unavailable: {exc}",
+        }), 500
+
+
+@app.get("/api/daily-cycle/health")
+def daily_cycle_health():
+    payload = _daily_cycle_service().health()
+    return jsonify(payload), 200 if payload["status"] == "ready" else 503
+
+
+@app.post("/api/daily-cycle/run")
+def daily_cycle_run():
+    if not ENGINE_EXECUTION_LOCK.acquire(blocking=False):
+        return jsonify({"status": "error", "message": "Daily Cycle is already running or an engine operation is active."}), 409
+    try:
+        result = _daily_cycle_service().run(request.get_json(silent=True) or {})
+        return jsonify(result), 200 if result["status"] == "success" else 500
+    except (ValueError, DataServiceError) as exc:
+        return jsonify({"status": "error", "failed_stage": "preflight", "message": str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 409
+    finally:
+        ENGINE_EXECUTION_LOCK.release()
 
 
 @app.get("/api/master-data/games/<path:game_name>")
@@ -1568,6 +1691,46 @@ def _validate_engine_prediction_result(
         return invalid
 
     return result
+
+
+def _run_prediction_engines_for_context(context: RunContext) -> dict[str, Any]:
+    try:
+        game_id = _resolve_kadija_game_id(context.game)
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+    results = [
+        _validate_engine_prediction_result(_enrich_engine_result(_run_prediction_engine(engine_name="Kadija", script_path=KADIJA_ENGINE, game_name=context.game, game_id=game_id, run_context=context))),
+        _validate_engine_prediction_result(_enrich_engine_result(_run_prediction_engine(engine_name="Desmond", script_path=DESMOND_ENGINE, game_name=context.game, game_id=game_id, run_context=context))),
+    ]
+    if any(result.get("status") != "success" for result in results):
+        return {"status": "error", "message": "One or more prediction engines failed.", "results": results}
+    payload = {"status": "success", "message": "Prediction engines completed successfully.", "game": context.game, "game_id": game_id, "run_context": context.as_dict(), "results": results}
+    try:
+        _save_latest_prediction_run(payload)
+    except (OSError, TypeError, ValueError) as exc:
+        return {"status": "error", "message": f"Latest prediction result could not be saved: {exc}"}
+    return {**payload, "cutoff_enforced": context.run_mode != "backdated" or _cutoff_acknowledged(context)}
+
+
+def _run_theresa_for_context(context: RunContext) -> dict[str, Any]:
+    try:
+        return {**run_theresa(target_game=context.game, run_context=context), "run_context": context.as_dict(), "cutoff_enforced": context.run_mode != "backdated" or _cutoff_acknowledged(context)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+def _run_research_for_context(context: RunContext) -> dict[str, Any]:
+    try:
+        return {**run_theresa_research(context.game, run_context=context), "run_context": context.as_dict(), "cutoff_enforced": context.run_mode != "backdated" or _cutoff_acknowledged(context)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+def _daily_cycle_service() -> DailyCycleService:
+    global DAILY_CYCLE
+    if DAILY_CYCLE is None:
+        DAILY_CYCLE = DailyCycleService(data_service=get_data_service(), normalization_running=lambda: NORMALIZER.status()["running"], prediction_engines=_run_prediction_engines_for_context, theresa=_run_theresa_for_context, intelligence=_run_research_for_context)
+    return DAILY_CYCLE
 
 @app.post("/api/prediction-engines/run")
 def prediction_engines_run():

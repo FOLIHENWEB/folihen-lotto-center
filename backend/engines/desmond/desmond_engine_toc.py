@@ -554,6 +554,16 @@ def add_positions(nums: List[int]) -> List[Dict[str, int]]:
     return [{"number": int(n), "position": i + 1} for i, n in enumerate(nums or [])]
 
 
+def run_context_metadata() -> Dict[str, Any]:
+    return {
+        "run_mode": os.environ.get("TOC_RUN_MODE", "live"),
+        "target_draw_date": os.environ.get("TOC_TARGET_DRAW_DATE") or None,
+        "data_cutoff_date": os.environ.get("TOC_DATA_CUTOFF_DATE") or None,
+        "late_run": os.environ.get("TOC_RUN_MODE") == "backdated",
+        "run_context_id": os.environ.get("TOC_RUN_CONTEXT_ID") or None,
+    }
+
+
 def save_pred_docx(game_name: str, preds: Dict[str, Any]) -> Optional[str]:
     if not DOCX_AVAILABLE:
         return None
@@ -593,6 +603,7 @@ def save_pred_json(game_name: str, preds: Dict[str, Any]) -> Optional[str]:
         "top5": add_positions(preds.get("top5", [])), "top2": add_positions(preds.get("top2", [])),
         "banker": preds.get("banker"),
         "confidence": float(preds.get("confidence", model.get("validation_score", 0.0)) or 0.0),
+        "run_context": run_context_metadata(),
         "meta": {"top60_size": len(preds.get("top60", [])), "top10_size": len(preds.get("top10", []))},
     }
     tmp = path.with_suffix(".tmp")

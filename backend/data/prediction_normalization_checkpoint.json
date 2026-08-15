@@ -1,0 +1,12 @@
+{
+  "archive_actions": 160,
+  "artifacts_already_aligned": 0,
+  "artifacts_already_processed": 0,
+  "artifacts_manual_review": 166,
+  "artifacts_normalized": 2304,
+  "artifacts_scanned": 2470,
+  "artifacts_unmatched": 0,
+  "last_completed_at": "2026-08-15T09:11:00.060981+00:00",
+  "master_data_modified": false,
+  "normalizer_version": 1
+}

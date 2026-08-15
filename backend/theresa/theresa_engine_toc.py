@@ -26,6 +26,7 @@ import argparse
 import json
 import logging
 import math
+import os
 import re
 import shutil
 import hashlib
@@ -1432,6 +1433,13 @@ def main() -> None:
     )
     pred["data_source"] = "engine_data_service"
     pred["dataset_sha256"] = canonical_dataset_checksum(all_draws)
+    pred["run_context"] = {
+        "run_mode": os.environ.get("TOC_RUN_MODE", "live"),
+        "target_draw_date": os.environ.get("TOC_TARGET_DRAW_DATE") or None,
+        "data_cutoff_date": os.environ.get("TOC_DATA_CUTOFF_DATE") or None,
+        "late_run": os.environ.get("TOC_RUN_MODE") == "backdated",
+        "run_context_id": os.environ.get("TOC_RUN_CONTEXT_ID") or None,
+    }
 
     json_path, docx_path, cip_path = save_prediction(pred)
     print_prediction(pred, json_path, docx_path, cip_path)

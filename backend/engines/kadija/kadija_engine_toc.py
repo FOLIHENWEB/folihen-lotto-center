@@ -169,6 +169,16 @@ def _fmt(nums):
 def add_positions(nums):
     return [{"number": int(n), "position": i + 1} for i, n in enumerate(nums)]
 
+
+def run_context_metadata() -> dict:
+    return {
+        "run_mode": os.environ.get("TOC_RUN_MODE", "live"),
+        "target_draw_date": os.environ.get("TOC_TARGET_DRAW_DATE") or None,
+        "data_cutoff_date": os.environ.get("TOC_DATA_CUTOFF_DATE") or None,
+        "late_run": os.environ.get("TOC_RUN_MODE") == "backdated",
+        "run_context_id": os.environ.get("TOC_RUN_CONTEXT_ID") or None,
+    }
+
 # ======================== CANONICAL TOC DATA LOADING ========================
 # Historical data comes exclusively from engine_data_service.py.
 # Kadija never reads MASTER_DATA DOCX/CSV directly.
@@ -834,6 +844,7 @@ def save_pred_json(game_name: str, pred: dict):
         "banker": pred["banker"],
         "confidence": pred.get("confidence", 0.0),
         "ensemble_confidence": pred.get("ensemble_confidence", 0.0),
+        "run_context": run_context_metadata(),
         "meta": {"top60_size": len(pred["top60"]), "top10_size": len(pred["top10"])},
     }
     tmp = out_path.with_suffix(".tmp")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -1455,6 +1456,73 @@ class EngineDataService:
             ),
         }
 
+    def visible_range(
+        self,
+        cutoff_date: date | str,
+    ) -> dict[str, Any]:
+        return CutoffDataService(self, cutoff_date).visible_range()
+
+
+class CutoffDataService:
+    """Read-only chronological view that excludes the cutoff draw and all later draws."""
+
+    def __init__(
+        self,
+        service: EngineDataService,
+        cutoff_date: date | str,
+    ) -> None:
+        self._service = service
+        self.cutoff_date = EngineDataService._coerce_date(cutoff_date, "cutoff_date")
+
+    def canonical_game_name(self, game: str) -> str:
+        return self._service.canonical_game_name(game)
+
+    def dataset_info(self) -> DatasetInfo:
+        return self._service.dataset_info()
+
+    def dataset_sha256(self) -> str:
+        return self._service.dataset_sha256()
+
+    def games(self) -> tuple[str, ...]:
+        return self._service.games()
+
+    def game_info(self, game: str) -> GameInfo:
+        return self._service.game_info(game)
+
+    def records(self, game: str) -> tuple[DrawRecord, ...]:
+        return tuple(record for record in self._service.records(game) if record.draw_date < self.cutoff_date)
+
+    def history(self, game: str, *, limit: int | None = None, newest_first: bool = False) -> tuple[DrawRecord, ...]:
+        records = self.records(game)
+        if limit is not None:
+            if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+                raise ValueError("limit must be a positive integer or None")
+            records = records[-limit:]
+        return tuple(reversed(records)) if newest_first else records
+
+    def latest(self, game: str) -> DrawRecord:
+        records = self.records(game)
+        if not records:
+            raise DrawNotFoundError(f"No visible draw exists for {game!r} before {self.cutoff_date.isoformat()}")
+        return records[-1]
+
+    def by_date(self, game: str, draw_date: date | str) -> DrawRecord:
+        target = EngineDataService._coerce_date(draw_date, "draw_date")
+        if target >= self.cutoff_date:
+            raise DrawNotFoundError(f"Draw {target.isoformat()} is excluded by cutoff {self.cutoff_date.isoformat()}")
+        return self._service.by_date(game, target)
+
+    def visible_range(self) -> dict[str, Any]:
+        records = tuple(record for game in self.games() for record in self.records(game))
+        dates = [record.draw_date for record in records]
+        return {
+            "cutoff_date": self.cutoff_date.isoformat(),
+            "record_count": len(records),
+            "earliest_visible_date": min(dates).isoformat() if dates else None,
+            "latest_visible_date": max(dates).isoformat() if dates else None,
+            "target_and_later_excluded": all(value < self.cutoff_date for value in dates),
+        }
+
 
 # ============================================================
 # DEFAULT APPLICATION SERVICE
@@ -1464,7 +1532,9 @@ _default_service: EngineDataService | None = None
 _default_service_lock = threading.Lock()
 
 
-def get_data_service() -> EngineDataService:
+def get_data_service(
+    cutoff_date: date | str | None = None,
+) -> EngineDataService | CutoffDataService:
     """
     Return the process-wide default data service.
 
@@ -1481,7 +1551,19 @@ def get_data_service() -> EngineDataService:
                     EngineDataService()
                 )
 
+    requested_cutoff = cutoff_date
+    if requested_cutoff is None and os.environ.get("TOC_RUN_MODE") == "backdated":
+        requested_cutoff = os.environ.get("TOC_DATA_CUTOFF_DATE")
+    if requested_cutoff:
+        return CutoffDataService(_default_service, requested_cutoff)
     return _default_service
+
+
+def get_visible_master_data_range(
+    cutoff_date: date | str,
+) -> dict[str, Any]:
+    """Return compact verification that an exclusive chronological cutoff is active."""
+    return CutoffDataService(get_data_service(), cutoff_date).visible_range()
 
 
 # ============================================================
