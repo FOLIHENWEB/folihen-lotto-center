@@ -49,6 +49,9 @@ const BottomActionBar: React.FC = () => {
   const [showTheresaDialog, setShowTheresaDialog] =
     useState(false);
 
+  const [showTheresaIntelligenceDialog, setShowTheresaIntelligenceDialog] =
+    useState(false);
+
   const [showMasterDataDialog, setShowMasterDataDialog] =
     useState(false);
 
@@ -71,6 +74,9 @@ const BottomActionBar: React.FC = () => {
     useState(false);
 
   const [runningTheresa, setRunningTheresa] =
+    useState(false);
+
+  const [runningTheresaIntelligence, setRunningTheresaIntelligence] =
     useState(false);
 
   const [message, setMessage] =
@@ -573,6 +579,56 @@ const BottomActionBar: React.FC = () => {
     }
   };
 
+  const runTheresaIntelligence = async () => {
+    const game = selectedGame.trim();
+    if (!game) {
+      setError('Choose a game before running Theresa Intelligence.');
+      return;
+    }
+
+    setRunningTheresaIntelligence(true);
+    setError(null);
+    setShowTheresaIntelligenceDialog(false);
+    setMessage(`Running Theresa Intelligence for ${game}...`);
+
+    try {
+      const response = await fetch(
+        '/api/theresa-intelligence/run',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ game }),
+        },
+      );
+      const payload = (await response.json()) as ApiResponse;
+      if (!response.ok || payload.status !== 'success') {
+        throw new Error(
+          payload.message ||
+            `Theresa Intelligence request failed (${response.status}).`,
+        );
+      }
+      window.dispatchEvent(
+        new CustomEvent('theresa:intelligence-complete', {
+          detail: payload,
+        }),
+      );
+      setMessage(`Theresa Intelligence completed for ${game}.`);
+      addNotification('success', `Theresa Intelligence completed for ${game}.`);
+    } catch (err) {
+      const text = err instanceof Error
+        ? err.message
+        : 'Unable to run Theresa Intelligence.';
+      setError(text);
+      setMessage(null);
+      addNotification('error', text);
+    } finally {
+      setRunningTheresaIntelligence(false);
+    }
+  };
+
   /* =========================================================
     DRAW NUMBER INPUT
     ========================================================= */
@@ -623,6 +679,28 @@ const BottomActionBar: React.FC = () => {
 
             <span className="action-subtitle">
               Add official draw
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className="action-btn"
+          disabled={runningTheresaIntelligence}
+          onClick={() => {
+            setError(null);
+            setMessage(null);
+            setShowTheresaIntelligenceDialog(true);
+          }}
+        >
+          <span className="action-copy">
+            <span className="action-label">
+              {runningTheresaIntelligence
+                ? 'Running Intelligence...'
+                : 'Run Theresa Intelligence'}
+            </span>
+            <span className="action-subtitle">
+              Historical Intelligence / Tier 2
             </span>
           </span>
         </button>
@@ -1001,6 +1079,48 @@ const BottomActionBar: React.FC = () => {
                 onClick={() => void runTheresa()}
               >
                 {runningTheresa ? 'Running...' : 'Run Theresa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTheresaIntelligenceDialog && (
+        <div className="game-selector-overlay">
+          <div className="game-selector-modal">
+            <h2>Run Theresa Intelligence</h2>
+            <p>Choose the canonical game for the Theresa Research Platform run.</p>
+            <select
+              value={selectedGame}
+              disabled={loadingGames || runningTheresaIntelligence}
+              onChange={event => setSelectedGame(event.target.value)}
+            >
+              <option value="">Choose game</option>
+              {games.map(game => (
+                <option
+                  key={`theresa-intelligence-${game.game_id ?? ''}-${game.game}`}
+                  value={game.game}
+                >
+                  {game.game}
+                </option>
+              ))}
+            </select>
+            <div className="game-selector-actions">
+              <button
+                type="button"
+                className="master-secondary-btn"
+                disabled={runningTheresaIntelligence}
+                onClick={() => setShowTheresaIntelligenceDialog(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="master-primary-btn"
+                disabled={runningTheresaIntelligence || !selectedGame}
+                onClick={() => void runTheresaIntelligence()}
+              >
+                {runningTheresaIntelligence ? 'Running...' : 'Run Intelligence'}
               </button>
             </div>
           </div>

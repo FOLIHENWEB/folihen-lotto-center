@@ -496,6 +496,7 @@ const TheresaPage: React.FC = () => {
                       {confidenceText}
                     </strong>
                   </div>
+
                 </section>
 
                 {/* PRIMARY OUTPUT */}
@@ -616,31 +617,6 @@ const TheresaPage: React.FC = () => {
                   )}
                 </section>
 
-                {/* TIER 2 PLACEHOLDER */}
-
-                <section className="theresa-tier-two-preview">
-                  <div>
-                    <span>
-                      THERESA TIER 2
-                    </span>
-
-                    <strong>
-                      Historical Intelligence Layer
-                    </strong>
-
-                    <p>
-                      Reserved for the second-tier
-                      engine. When integrated, it
-                      will run automatically after
-                      Theresa Tier 1 without asking
-                      for another game selection.
-                    </p>
-                  </div>
-
-                  <span className="theresa-tier-two-badge">
-                    Coming later
-                  </span>
-                </section>
               </>
             )}
           </>

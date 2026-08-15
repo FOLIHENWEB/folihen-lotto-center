@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -25,6 +26,45 @@ from engine_data_service import DataServiceError, get_data_service
 
 THERESA_DIR = BACKEND_DIR / "theresa"
 THERESA_ENGINE = THERESA_DIR / "theresa_engine_toc.py"
+
+THERESA_RESEARCH_PROJECT_DIR = (
+    Path.home()
+    / "Documents"
+    / "GitHub"
+    / "Theresa_Research_Platform"
+)
+THERESA_RESEARCH_PYTHON = (
+    THERESA_RESEARCH_PROJECT_DIR
+    / ".venv"
+    / "Scripts"
+    / "python.exe"
+)
+THERESA_RESEARCH_OUTPUTS_DIR = (
+    THERESA_RESEARCH_PROJECT_DIR
+    / "outputs"
+)
+
+THERESA_RESEARCH_GAME_IDS = {
+    "monday special": 1,
+    "wednesday midweek": 2,
+    "friday bonanza": 3,
+    "saturday national": 4,
+    "sunday aseda": 5,
+    "vag monday": 6,
+    "noon monday": 7,
+    "vag tuesday": 8,
+    "noon tuesday": 9,
+    "lucky tuesday": 10,
+    "vag wednesday": 11,
+    "noon wednesday": 12,
+    "vag thursday": 13,
+    "noon thursday": 14,
+    "fortune thursday": 15,
+    "vag friday": 16,
+    "noon friday": 17,
+    "vag saturday": 18,
+    "noon saturday": 19,
+}
 
 KADIJA_ENGINE = (
     BACKEND_DIR
@@ -59,6 +99,12 @@ PREDICTION_LATEST_FILE = (
     / "latest_prediction_engines.json"
 )
 
+THERESA_RESEARCH_LATEST_FILE = (
+    BACKEND_DIR
+    / "data"
+    / "latest_theresa_research_prediction.json"
+)
+
 
 def _save_latest_prediction_run(payload: dict) -> None:
     PREDICTION_LATEST_FILE.parent.mkdir(
@@ -80,6 +126,24 @@ def _save_latest_prediction_run(payload: dict) -> None:
     )
 
     temp_path.replace(PREDICTION_LATEST_FILE)
+
+
+def _save_latest_theresa_research_prediction(
+    payload: dict[str, Any],
+) -> None:
+    THERESA_RESEARCH_LATEST_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    temp_path = THERESA_RESEARCH_LATEST_FILE.with_suffix(
+        ".json.tmp"
+    )
+    temp_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    temp_path.replace(THERESA_RESEARCH_LATEST_FILE)
 
 
 def _engine_prediction_is_usable(result: Any) -> bool:
@@ -307,6 +371,316 @@ def latest_theresa_prediction(
     return None
 
 
+def _latest_theresa_research_prediction(
+    target_game: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    payload = _read_json_file(THERESA_RESEARCH_LATEST_FILE)
+    prediction = (
+        payload.get("prediction")
+        if payload is not None
+        and payload.get("runtime") == "Theresa_Research_Platform"
+        else None
+    )
+    if isinstance(prediction, dict) and (
+        not target_game
+        or normalize_game_name(str(prediction.get("game") or ""))
+        == normalize_game_name(target_game)
+    ):
+        return prediction
+
+    if not THERESA_RESEARCH_OUTPUTS_DIR.is_dir():
+        return None
+
+    candidates: list[tuple[Path, dict[str, Any]]] = []
+    for artifact_path in THERESA_RESEARCH_OUTPUTS_DIR.glob(
+        "*/*/official_predictions.json"
+    ):
+        artifact = _read_json_file(artifact_path)
+        if artifact is None:
+            continue
+        try:
+            canonical_game = _canonical_game_name(
+                str(artifact.get("selected_game") or "")
+            )
+            registry_id = THERESA_RESEARCH_GAME_IDS[canonical_game]
+            normalized = _normalize_research_prediction(
+                artifact,
+                canonical_game=canonical_game,
+                registry_id=registry_id,
+                artifact_path=artifact_path,
+                execution_seconds=0,
+            )
+        except (DataServiceError, KeyError, ValueError):
+            continue
+        if target_game and canonical_game != normalize_game_name(target_game):
+            continue
+        candidates.append((artifact_path, normalized))
+
+    if not candidates:
+        return None
+
+    _, latest_prediction = max(
+        candidates,
+        key=lambda item: item[0].stat().st_mtime,
+    )
+    return latest_prediction
+
+
+def _research_game_slug(game_name: str) -> str:
+    return "-".join(normalize_game_name(game_name).split())
+
+
+def _research_commit_and_version() -> dict[str, Optional[str]]:
+    version: Optional[str] = None
+    version_path = THERESA_RESEARCH_PROJECT_DIR / "VERSION"
+    try:
+        version = version_path.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        pass
+
+    commit: Optional[str] = None
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(THERESA_RESEARCH_PROJECT_DIR), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if completed.returncode == 0:
+            commit = completed.stdout.strip() or None
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+    return {
+        "research_commit": commit,
+        "research_version": version,
+    }
+
+
+def _research_number(value: Any, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer.")
+    try:
+        number = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer.") from exc
+    if not 1 <= number <= 90:
+        raise ValueError(f"{field_name} must be between 1 and 90.")
+    return number
+
+
+def _research_number_list(
+    value: Any,
+    field_name: str,
+    expected_count: int,
+) -> list[int]:
+    if not isinstance(value, list) or len(value) != expected_count:
+        raise ValueError(
+            f"{field_name} must contain exactly {expected_count} numbers."
+        )
+    numbers = [_research_number(item, field_name) for item in value]
+    if len(set(numbers)) != len(numbers):
+        raise ValueError(f"{field_name} must not contain duplicates.")
+    return numbers
+
+
+def _normalize_research_prediction(
+    artifact: dict[str, Any],
+    *,
+    canonical_game: str,
+    registry_id: int,
+    artifact_path: Path,
+    execution_seconds: float,
+) -> dict[str, Any]:
+    selected_game = artifact.get("selected_game")
+    if normalize_game_name(str(selected_game or "")) != canonical_game:
+        raise ValueError(
+            "Research prediction selected_game does not match the requested game."
+        )
+
+    banker_values = _research_number_list(
+        artifact.get("banker"), "banker", 1
+    )
+    top5 = _research_number_list(
+        artifact.get("top_five"), "top_five", 5
+    )
+    top10 = _research_number_list(
+        artifact.get("top_ten"), "top_ten", 10
+    )
+    if banker_values[0] not in top5:
+        raise ValueError("banker must be included in top_five.")
+    if any(number not in top10 for number in top5):
+        raise ValueError("top_five must be contained in top_ten.")
+
+    raw_pairs = artifact.get("two_sure_pairs")
+    if not isinstance(raw_pairs, list) or len(raw_pairs) != 5:
+        raise ValueError("two_sure_pairs must contain exactly five pairs.")
+    two_sure_pairs: list[list[int]] = []
+    for index, pair in enumerate(raw_pairs, start=1):
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            raise ValueError(
+                f"two_sure_pairs entry {index} must contain two numbers."
+            )
+        normalized_pair = [
+            _research_number(value, f"two_sure_pairs entry {index}")
+            for value in pair
+        ]
+        if normalized_pair[0] == normalized_pair[1]:
+            raise ValueError(
+                f"two_sure_pairs entry {index} must contain distinct numbers."
+            )
+        two_sure_pairs.append(normalized_pair)
+
+    confidence = artifact.get("confidence")
+    risk = artifact.get("risk")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+        raise ValueError("confidence must be numeric.")
+    if isinstance(risk, bool) or not isinstance(risk, (int, float)):
+        raise ValueError("risk must be numeric.")
+    if not 0 <= float(confidence) <= 1 or not 0 <= float(risk) <= 1:
+        raise ValueError("confidence and risk must be between 0 and 1.")
+
+    consensus = artifact.get("consensus")
+    if not isinstance(consensus, list) or not all(
+        isinstance(value, str) for value in consensus
+    ):
+        raise ValueError("consensus must be an array of strings.")
+
+    provenance = _research_commit_and_version()
+    return {
+        "runtime": "Theresa_Research_Platform",
+        "game": canonical_game,
+        "selected_game": selected_game,
+        "registry_id": registry_id,
+        "generated": datetime.now(timezone.utc).isoformat(),
+        "source_artifact": str(artifact_path),
+        "execution_seconds": round(execution_seconds, 6),
+        "banker": banker_values[0],
+        "two_sure_pairs": two_sure_pairs,
+        "top5": top5,
+        "top10": top10,
+        "confidence": float(confidence),
+        "risk": float(risk),
+        "consensus": consensus,
+        "unpublished_tiers": ["top2", "top20", "top30", "top60"],
+        **provenance,
+    }
+
+
+def run_theresa_research(
+    target_game: str,
+) -> dict[str, Any]:
+    if not THERESA_RESEARCH_PROJECT_DIR.is_dir():
+        raise FileNotFoundError(
+            "Theresa Research Platform project was not found: "
+            f"{THERESA_RESEARCH_PROJECT_DIR}"
+        )
+    if not THERESA_RESEARCH_PYTHON.is_file():
+        raise FileNotFoundError(
+            "Theresa Research Platform Python was not found: "
+            f"{THERESA_RESEARCH_PYTHON}"
+        )
+
+    canonical_game = _canonical_game_name(target_game)
+    registry_id = THERESA_RESEARCH_GAME_IDS.get(canonical_game)
+    if registry_id is None:
+        raise ValueError(
+            "No Theresa Research Platform registry mapping exists for "
+            f"{canonical_game!r}."
+        )
+
+    game_output_dir = THERESA_RESEARCH_OUTPUTS_DIR / _research_game_slug(
+        canonical_game
+    )
+    before_run = {
+        path.resolve()
+        for path in game_output_dir.iterdir()
+    } if game_output_dir.is_dir() else set()
+
+    command = [
+        str(THERESA_RESEARCH_PYTHON),
+        "-m",
+        "research.cli",
+        "--game",
+        str(registry_id),
+    ]
+    started = time.perf_counter()
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(THERESA_RESEARCH_PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "Theresa Research Platform timed out after 600 seconds.\n"
+            f"STDOUT:\n{exc.stdout or ''}\nSTDERR:\n{exc.stderr or ''}"
+        ) from exc
+    execution_seconds = time.perf_counter() - started
+
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "Theresa Research Platform execution failed "
+            f"with exit code {completed.returncode}.\n"
+            f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
+        )
+
+    output_match = re.search(
+        r"^Output folder:\s*(.+)$",
+        completed.stdout,
+        flags=re.MULTILINE,
+    )
+    if output_match is None:
+        raise RuntimeError(
+            "Theresa Research Platform completed without reporting its output folder."
+        )
+
+    run_output_dir = Path(output_match.group(1).strip()).resolve()
+    expected_root = game_output_dir.resolve()
+    if run_output_dir.parent != expected_root or run_output_dir in before_run:
+        raise RuntimeError(
+            "Theresa Research Platform reported an unexpected output folder."
+        )
+
+    artifact_path = run_output_dir / "official_predictions.json"
+    artifact = _read_json_file(artifact_path)
+    if artifact is None:
+        raise RuntimeError(
+            "Theresa Research Platform did not produce a readable "
+            "official_predictions.json artifact."
+        )
+
+    prediction = _normalize_research_prediction(
+        artifact,
+        canonical_game=canonical_game,
+        registry_id=registry_id,
+        artifact_path=artifact_path,
+        execution_seconds=execution_seconds,
+    )
+    _save_latest_theresa_research_prediction(
+        {
+            "runtime": "Theresa_Research_Platform",
+            "prediction": prediction,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "return_code": completed.returncode,
+        }
+    )
+
+    return {
+        "status": "success",
+        "target_game": canonical_game,
+        "registry_id": registry_id,
+        "prediction": prediction,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "return_code": completed.returncode,
+        "execution_seconds": prediction["execution_seconds"],
+    }
+
+
 def run_theresa(
     target_game: str,
     source_mode: str = "auto",
@@ -508,6 +882,7 @@ def theresa_health():
     return jsonify(
         {
             "status": "ok",
+            "runtime": "Theresa_Tier_1",
             "engine_exists": THERESA_ENGINE.exists(),
             "engine_path": str(THERESA_ENGINE),
             "output_dir": str(THERESA_OUTPUT_DIR),
@@ -539,6 +914,35 @@ def theresa_latest():
             "prediction": prediction,
         }
     )
+
+
+@app.get("/api/theresa-intelligence/health")
+def theresa_intelligence_health():
+    return jsonify(
+        {
+            "status": "ok",
+            "runtime": "Theresa_Research_Platform",
+            "project_exists": THERESA_RESEARCH_PROJECT_DIR.is_dir(),
+            "python_exists": THERESA_RESEARCH_PYTHON.is_file(),
+            "project_path": str(THERESA_RESEARCH_PROJECT_DIR),
+            "output_dir": str(THERESA_RESEARCH_OUTPUTS_DIR),
+            "output_dir_exists": THERESA_RESEARCH_OUTPUTS_DIR.is_dir(),
+        }
+    )
+
+
+@app.get("/api/theresa-intelligence/latest")
+def theresa_intelligence_latest():
+    target_game = request.args.get("game")
+    prediction = _latest_theresa_research_prediction(target_game)
+    if prediction is None:
+        return jsonify(
+            {
+                "status": "not_found",
+                "message": "No Theresa Intelligence prediction available.",
+            }
+        ), 404
+    return jsonify({"status": "success", "prediction": prediction})
 
 
 @app.get("/api/master-data/games")
@@ -1298,9 +1702,7 @@ def theresa_run():
             source_mode=source_mode,
             lookback=int(lookback),
             trigger_depth=int(trigger_depth),
-            min_consistency=int(
-                min_consistency
-            ),
+            min_consistency=int(min_consistency),
         )
         return jsonify(result)
 
@@ -1314,6 +1716,21 @@ def theresa_run():
             ),
             500,
         )
+
+
+@app.post("/api/theresa-intelligence/run")
+def theresa_intelligence_run():
+    payload = request.get_json(silent=True) or {}
+    target_game = payload.get("game", DEFAULT_TARGET_GAME)
+    try:
+        return jsonify(run_theresa_research(target_game))
+    except Exception as exc:
+        return jsonify(
+            {
+                "status": "error",
+                "message": str(exc),
+            }
+        ), 500
 
 
 if __name__ == "__main__":

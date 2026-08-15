@@ -1,0 +1,74 @@
+{
+  "runtime": "Theresa_Research_Platform",
+  "prediction": {
+    "runtime": "Theresa_Research_Platform",
+    "game": "fortune thursday",
+    "selected_game": "Fortune Thursday",
+    "registry_id": 15,
+    "generated": "2026-08-14T22:18:18.917200+00:00",
+    "source_artifact": "C:\\Users\\asus\\Documents\\GitHub\\Theresa_Research_Platform\\outputs\\fortune-thursday\\20260814_221811\\official_predictions.json",
+    "execution_seconds": 20.297775,
+    "banker": 15,
+    "two_sure_pairs": [
+      [
+        15,
+        33
+      ],
+      [
+        15,
+        26
+      ],
+      [
+        26,
+        33
+      ],
+      [
+        15,
+        16
+      ],
+      [
+        15,
+        57
+      ]
+    ],
+    "top5": [
+      15,
+      33,
+      26,
+      16,
+      57
+    ],
+    "top10": [
+      15,
+      33,
+      26,
+      16,
+      57,
+      44,
+      38,
+      40,
+      46,
+      4
+    ],
+    "confidence": 1.0,
+    "risk": 0.4,
+    "consensus": [
+      "cross_game",
+      "decision",
+      "historical",
+      "pattern",
+      "prediction_history"
+    ],
+    "unpublished_tiers": [
+      "top2",
+      "top20",
+      "top30",
+      "top60"
+    ],
+    "research_commit": "d0747bd784dc08437c4aa46878bd7646e5405b89",
+    "research_version": "4.0.0-foundation"
+  },
+  "stdout": "THERESA RESEARCH PLATFORM\nTHERESA VERSION 1.0\nStandard Game Registry\n1. Monday Special\n2. Wednesday Midweek\n3. Friday Bonanza\n4. Saturday National\n5. Sunday Aseda\n6. VAG Monday\n7. Noon Monday\n8. VAG Tuesday\n9. Noon Tuesday\n10. Lucky Tuesday\n11. VAG Wednesday\n12. Noon Wednesday\n13. VAG Thursday\n14. Noon Thursday\n15. Fortune Thursday\n16. VAG Friday\n17. Noon Friday\n18. VAG Saturday\n19. Noon Saturday\nSelected game: Fortune Thursday\nProgress: started - initialising pipeline\nProgress: loading historical data - loading data for Fortune Thursday\nProgress: running historical learning - historical learning dependency\nProgress: running alignment - alignment dependency\nProgress: running pattern discovery - pattern discovery dependency\nProgress: running decision intelligence - decision intelligence dependency\nProgress: generating recommendations - building official recommendations\nProgress: updating learning - updating learning history\nProgress: exporting reports - report generation complete\nProgress: completed - pipeline finished\nOfficial Recommendations\nSelected game: Fortune Thursday\nMASTER_DATA source: C:\\Users\\asus\\Documents\\MASTER_DATA\nPrediction source: C:\\Users\\asus\\Documents\\BANGER_TRACKER\\Theresa_Predictor\\input_stream\\Theresa_fortune_thursday_20260814_014504.json\nHistorical cutoff: 2026-08-14\nExecution time: 0.024s\nConfidence summary: 100.00%\nRisk summary: 40.00%\nConsensus summary: cross_game, decision, historical, pattern, prediction_history\nOutput folder: C:\\Users\\asus\\Documents\\GitHub\\Theresa_Research_Platform\\outputs\\fortune-thursday\\20260814_221811\nBanker: 15\nTwo-Sure pairs:\n1. 15 - 33\n2. 15 - 26\n3. 26 - 33\n4. 15 - 16\n5. 15 - 57\nTop 5: 15, 33, 26, 16, 57\nTop 10: 15, 33, 26, 16, 57, 44, 38, 40, 46, 4\n",
+  "stderr": "",
+  "return_code": 0
+}
