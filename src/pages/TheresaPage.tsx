@@ -283,7 +283,7 @@ const TheresaPage: React.FC = () => {
       <section className="theresa-page-header">
         <div>
           <p className="theresa-eyebrow">
-            THERESA INTELLIGENCE
+            THERESA
           </p>
 
           <h1>
