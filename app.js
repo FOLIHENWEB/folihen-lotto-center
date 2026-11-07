@@ -349,7 +349,10 @@ function viewSettings() {
 function render() {
   const app = $("#app"); app.replaceChildren();
   const views = { today: viewToday, add: viewAdd, results: viewResults, settings: viewSettings };
-  if (!state.token && state.view !== "settings") state.view = "settings";
+  if (!state.token && state.view !== "settings") {
+    state.view = "settings";
+    state.flash = state.flash || "This app on this screen is not connected yet. Paste your GitHub token below and tap Save and test. (A home-screen icon keeps its own settings, separate from the browser.)";
+  }
   if (state.flash) { app.append(h("div", { class: "msg ok" }, state.flash)); state.flash = ""; }
   if (state.error) app.append(h("div", { class: "msg error" }, state.error, " ", h("button", { class: "btn small ghost", onclick: refresh }, "Try again")));
   app.append(views[state.view]());
