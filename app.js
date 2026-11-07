@@ -277,6 +277,13 @@ const ballRow = (nums, cls = "") => h("div", { class: `balls ${cls}` }, nums.map
 async function engLatestRun() {
   const r = await gh("GET", `/repos/${REPO}/actions/workflows/${WORKFLOW}/runs?per_page=1`, state.token);
   eng.run = r.workflow_runs && r.workflow_runs[0] ? r.workflow_runs[0] : null;
+  eng.steps = null;
+  if (eng.run && eng.run.status !== "completed") {
+    try {
+      const j = await gh("GET", `/repos/${REPO}/actions/runs/${eng.run.id}/jobs`, state.token);
+      eng.steps = j.jobs && j.jobs[0] ? j.jobs[0].steps : null;
+    } catch { eng.steps = null; }
+  }
 }
 async function engLoadPicks() {
   eng.loading = true;
@@ -295,7 +302,7 @@ async function engRefresh() {
   catch (e) { eng.msg = e.message; }
   if (state.view === "engines") render();
   clearTimeout(eng.timer);
-  if (eng.run && eng.run.status !== "completed" && state.view === "engines") eng.timer = setTimeout(engRefresh, 20000);
+  if (eng.run && eng.run.status !== "completed" && state.view === "engines") eng.timer = setTimeout(engRefresh, 15000);
 }
 async function engStart() {
   eng.msg = "Starting…"; render();
@@ -331,9 +338,30 @@ function runStatusPanel() {
   const label = r.status === "completed"
     ? (r.conclusion === "success" ? "Last run finished" : `Last run did not finish (${r.conclusion})`)
     : r.status === "queued" ? "Waiting to start…" : `Running… ${mins} min so far`;
-  return h("div", { class: `msg ${r.status !== "completed" ? "info" : r.conclusion === "success" ? "ok" : "error"}` },
+  if (r.status !== "completed") return h("div", { class: "msg info" }, label, progressBar());
+  return h("div", { class: `msg ${r.conclusion === "success" ? "ok" : "error"}` },
     `${label} · started ${started.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}`,
     r.status === "completed" && r.conclusion !== "success" ? h("a", { href: r.html_url, target: "_blank", rel: "noopener", style: "margin-left:8px" }, "details") : null);
+}
+
+/* Progress of a cloud run: one step per engine (see .github/workflows/run-engines.yml). */
+function progressBar() {
+  const steps = (eng.steps || []).filter((st) => st.name === "Prepare" || st.name.startsWith("Engine: ") || st.name === "Finish");
+  if (!steps.length) return h("div", { class: "progress" }, h("div", { class: "bar" }, h("span", { style: "width:4%" })), h("div", { class: "fine" }, "Getting a cloud computer ready…"));
+  const done = steps.filter((st) => st.status === "completed").length;
+  const now = steps.find((st) => st.status === "in_progress");
+  const pct = Math.round((100 * done) / steps.length);
+  const mins = now && now.started_at ? Math.max(0, Math.round((Date.now() - new Date(now.started_at)) / 60000)) : 0;
+  const nowText = !now ? (done === steps.length ? "Saving the picks…" : "Starting…")
+    : now.name === "Prepare" ? "Preparing the results…"
+    : now.name === "Finish" ? "Making the report…"
+    : `Now running ${now.name.slice(8)}${mins ? ` (${mins} min)` : ""}`;
+  return h("div", { class: "progress" },
+    h("div", { class: "bar", role: "progressbar", "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100 }, h("span", { style: `width:${Math.max(pct, 4)}%` })),
+    h("div", { class: "progress-text" }, h("b", {}, `${pct}%`), ` · ${nowText}`),
+    h("div", { class: "chips" }, steps.filter((st) => st.name.startsWith("Engine: ")).map((st) =>
+      h("span", { class: `chip ${st.status === "completed" ? (st.conclusion === "success" ? "done" : "bad") : st.status === "in_progress" ? "now" : ""}` },
+        (st.status === "completed" ? (st.conclusion === "success" ? "✓ " : "✕ ") : st.status === "in_progress" ? "● " : "") + st.name.slice(8)))));
 }
 
 function picksPanel() {

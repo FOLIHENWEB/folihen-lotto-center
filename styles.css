@@ -215,3 +215,12 @@ ul.plain li { margin: 6px 0; }
 tr.hitrow td { font-weight: 700; color: #16a34a; }
 pre.scoreboard { font-size: 11px; overflow-x: auto; white-space: pre; margin: 8px 0 0; }
 details.panel > summary { color: var(--text); font-weight: 600; }
+.progress { margin-top: 10px; }
+.progress .bar { height: 12px; border-radius: 999px; background: rgba(0,0,0,.08); overflow: hidden; }
+.progress .bar span { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .6s ease; }
+.progress-text { margin: 8px 0 6px; font-size: 15px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 13px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-secondary); }
+.chip.done { color: #15803d; border-color: #86efac; }
+.chip.now { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.chip.bad { color: #b91c1c; border-color: #fca5a5; }
