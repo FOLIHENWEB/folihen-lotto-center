@@ -5,32 +5,68 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Folihen Lotto Center</title>
     <meta name="description" content="Enter and check Ghana lottery draw results from your phone or computer." />
-    <meta name="theme-color" content="#0f5132" />
+    <meta name="theme-color" content="#1e293b" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Lotto Center" />
+    <script>
+      try { var t = localStorage.getItem("fl_theme"); if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+    </script>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header>
-      <div class="brand">
-        <img src="icons/favicon.svg" alt="" width="28" height="28" />
-        <div>
-          <h1>Folihen Lotto Center</h1>
-          <p>Results for all 19 games</p>
+    <div class="app-shell">
+      <div id="overlay" class="sidebar-overlay" hidden></div>
+      <nav id="sidebar" class="sidebar" aria-label="Main menu">
+        <div class="sidebar-brand">
+          <img src="icons/favicon.svg" alt="" width="30" height="30" />
+          <div>
+            <div class="brand-name">Folihen</div>
+            <div class="brand-sub">Lotto Center</div>
+          </div>
         </div>
+        <ul class="sidebar-nav">
+          <li><button data-view="dashboard"><span class="ico" aria-hidden="true">▦</span>Dashboard</button></li>
+          <li><button data-view="add"><span class="ico" aria-hidden="true">＋</span>Add result</button></li>
+          <li><button data-view="masterdata"><span class="ico" aria-hidden="true">☰</span>MASTER_DATA</button></li>
+          <li><button data-view="engines"><span class="ico" aria-hidden="true">⚙</span>Prediction Engines</button></li>
+          <li><button data-view="settings"><span class="ico" aria-hidden="true">⚿</span>Settings</button></li>
+          <li><button data-view="about"><span class="ico" aria-hidden="true">ⓘ</span>About</button></li>
+        </ul>
+        <div class="sidebar-footer">
+          <div class="status-indicator"><span id="conn-dot" class="dot"></span><span id="conn-text">Not connected</span></div>
+        </div>
+      </nav>
+
+      <div class="main-content">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button id="menu" class="icon-btn menu-btn" aria-label="Open menu">☰</button>
+            <div>
+              <div id="page-title" class="topbar-title">Dashboard</div>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <button id="theme" class="icon-btn" aria-label="Switch light or dark mode" title="Light / dark">◐</button>
+            <button id="refresh" class="icon-btn" aria-label="Reload results" title="Reload results">⟳</button>
+          </div>
+        </header>
+        <div id="status" class="status" hidden></div>
+        <main id="app" class="page-content"></main>
+        <footer class="statusbar">
+          <span id="sb-draws">—</span>
+          <span id="sb-loaded"></span>
+        </footer>
       </div>
-      <button id="refresh" class="icon-btn" aria-label="Reload results" title="Reload results">⟳</button>
-    </header>
-    <div id="status" class="status" hidden></div>
-    <main id="app"></main>
-    <nav>
-      <button data-view="today"><span aria-hidden="true">📅</span>This week</button>
-      <button data-view="add"><span aria-hidden="true">➕</span>Add result</button>
-      <button data-view="results"><span aria-hidden="true">📋</span>Results</button>
-      <button data-view="settings"><span aria-hidden="true">⚙️</span>Settings</button>
+    </div>
+
+    <nav class="bottombar" aria-label="Quick actions">
+      <button data-view="dashboard"><span aria-hidden="true">▦</span>Dashboard</button>
+      <button data-view="add"><span aria-hidden="true">＋</span>Add result</button>
+      <button data-view="masterdata"><span aria-hidden="true">☰</span>Results</button>
+      <button data-menu="1"><span aria-hidden="true">≡</span>Menu</button>
     </nav>
     <script src="app.js"></script>
   </body>

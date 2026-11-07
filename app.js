@@ -156,7 +156,7 @@ async function commitChange(token, change, message) {
 }
 
 /* ------------------------------------------------------------------ state */
-const state = { token: store.get("fl_token") || "", rows: [], loadedAt: null, error: "", view: "today", resultsGame: "vag monday", form: null };
+const state = { token: store.get("fl_token") || "", rows: [], loadedAt: null, error: "", view: "dashboard", resultsGame: "vag monday", form: null };
 const cached = store.get("fl_cache");
 if (cached) { try { state.rows = parseCsv(cached); } catch { /* ignore bad cache */ } }
 
@@ -195,7 +195,7 @@ const drawFor = (g, d) => state.rows.find((r) => r.game === g && r.date === d);
 function go(view, form) { state.view = view; if (form !== undefined) state.form = form; render(); window.scrollTo(0, 0); }
 
 /* ------------------------------------------------------------------ views */
-function viewToday() {
+function weekItems() {
   const t = today(); const items = [];
   for (let back = 0; back < 7; back++) {
     const d = new Date(t); d.setDate(t.getDate() - back);
@@ -209,9 +209,69 @@ function viewToday() {
           h("button", { class: "btn small", onclick: () => go("add", { game: g, date: iso(d) }) }, "Add")));
     }
   }
+  return items;
+}
+
+const realRows = () => { const lim = iso(new Date(Date.now() + 86400000)); return state.rows.filter((r) => r.date <= lim); };
+function coverage() {
+  const by = {};
+  for (const r of realRows()) { (by[r.game] = by[r.game] || []).push(r.date); }
+  return Object.keys(GAMES).map((g) => {
+    const ds = (by[g] || []).sort();
+    return { g, n: ds.length, first: ds[0] || "", last: ds[ds.length - 1] || "" };
+  });
+}
+
+function viewDashboard() {
+  const t = today(); let missing = 0;
+  for (let back = 0; back < 7; back++) {
+    const d = new Date(t); d.setDate(t.getDate() - back);
+    for (const g of Object.keys(GAMES)) if (GAMES[g][1] === weekday(d) && !drawFor(g, iso(d))) missing++;
+  }
+  const latest = realRows().reduce((m, r) => (r.date > m ? r.date : m), "");
+  const earliest = realRows().reduce((m, r) => (!m || r.date < m ? r.date : m), "");
+  const fromApp = state.rows.filter((r) => r.source === "app").length;
+  const card = (k, v, s) => h("div", { class: "card" }, h("div", { class: "k" }, k), h("div", { class: "v" }, v), s ? h("div", { class: "s" }, s) : null);
+  const cov = coverage();
   return h("section", {},
-    h("p", { class: "lead" }, "Draws from the last 7 days. Tap Add to enter a result."),
-    ...items);
+    h("h2", {}, "Overview"),
+    h("p", { class: "lead" }, "Your results for all 19 games, kept online and copied into MASTER_DATA on your PC."),
+    h("div", { class: "cards" },
+      card("Draws saved", state.rows.length.toLocaleString(), earliest ? `since ${niceDate(earliest)}` : ""),
+      card("Games", "19", "Noon, main and VAG"),
+      card("Latest draw", latest ? niceDate(latest) : "—", ""),
+      card("Missing this week", String(missing), missing ? "tap Add below" : "all entered"),
+      card("Added from the app", fromApp.toLocaleString(), "")),
+    h("div", { class: "grid2" },
+      h("div", { class: "panel" }, h("h3", { style: "margin-top:0" }, "This week"), ...weekItems()),
+      h("div", { class: "panel" }, h("h3", { style: "margin-top:0" }, "Results per game"),
+        h("div", { class: "table-wrap" }, h("table", { class: "cov" },
+          h("thead", {}, h("tr", {}, h("th", {}, "Game"), h("th", {}, "From"), h("th", {}, "Latest"), h("th", { class: "num" }, "Draws"))),
+          h("tbody", {}, cov.map((c) => h("tr", { style: "cursor:pointer", onclick: () => { state.resultsGame = c.g; go("masterdata"); } },
+            h("td", {}, gameName(c.g)), h("td", {}, c.first ? c.first.slice(0, 7) : "—"), h("td", {}, c.last ? niceDate(c.last) : "—"), h("td", { class: "num" }, c.n.toLocaleString())))))))));
+}
+
+function viewEngines() {
+  return h("section", {},
+    h("h2", {}, "Prediction Engines"),
+    h("p", { class: "lead" }, "Kadijja, Desmond, Theresa and the other engines run on your PC, so they can't run from this website."),
+    h("div", { class: "panel" },
+      h("h3", { style: "margin-top:0" }, "Coming next"),
+      h("ul", { class: "plain" },
+        h("li", {}, "Each engine's Top 10 will be saved here before every draw, with the time it was made."),
+        h("li", {}, "After the draw, the hits will be counted automatically."),
+        h("li", {}, "Over a few weeks this shows, fairly, whether any engine beats picking numbers at random (about 0.56 hits per Top 10)."))));
+}
+
+function viewAbout() {
+  return h("section", {},
+    h("h2", {}, "About"),
+    h("div", { class: "panel" },
+      h("p", {}, "Folihen Lotto Center keeps the results for all 19 NLA games in one place, from your phone or PC."),
+      h("ul", { class: "plain" },
+        h("li", {}, "Results are saved in the private lotto_ecosystem repository on GitHub (results/draws.csv)."),
+        h("li", {}, "Your PC copies new results into the MASTER_DATA Word files every 30 minutes while it is on."),
+        h("li", {}, "History comes from your MASTER_DATA, the GhanaYello archive and the printed Lotto paper, checked against each other."))));
 }
 
 function viewAdd() {
@@ -271,7 +331,7 @@ function viewAdd() {
         btn.disabled = false; btn.textContent = "Save result"; return;
       }
       state.flash = `Saved ${gameName(f.game)}, ${niceDate(f.date)}: ${numbers}. Your PC adds it to MASTER_DATA at its next sync.`;
-      state.form = null; go("today");
+      state.form = null; go("dashboard");
     } catch (e) {
       show(e.message, "error"); btn.disabled = false; btn.textContent = "Save result";
     }
@@ -279,7 +339,7 @@ function viewAdd() {
   function show(text, kind) { msg.textContent = text; msg.className = `msg ${kind}`; msg.hidden = false; }
   const btn = h("button", { class: "btn primary wide", onclick: save }, "Save result");
 
-  return h("section", {},
+  return h("section", { class: "form" }, h("h2", {}, "Add result"),
     h("label", { for: "game" }, "Game"), gameSel,
     h("label", { for: "date" }, "Draw date"), dateIn,
     wrongDay ? h("div", { class: "msg warn" }, `${niceDate(f.date)} is not a ${DAYS[GAMES[f.game][1]]}. Check the date.`) : null,
@@ -289,22 +349,28 @@ function viewAdd() {
     msg, btn);
 }
 
-function viewResults() {
+function viewMasterData() {
   const g = state.resultsGame;
-  const sel = h("select", { onchange: (e) => { state.resultsGame = e.target.value; render(); } },
+  const sel = h("select", { onchange: (e) => { state.resultsGame = e.target.value; state.showAll = false; render(); } },
     DAYS.map((day, wd) => h("optgroup", { label: day },
       Object.keys(GAMES).filter((x) => GAMES[x][1] === wd).sort((a, b) => GAMES[a][2] - GAMES[b][2])
         .map((x) => h("option", { value: x, selected: x === g }, gameName(x))))));
   const rows = state.rows.filter((r) => r.game === g).sort((a, b) => (a.date < b.date ? 1 : -1));
-  const list = rows.slice(0, 60).map((r) => h("div", { class: "row" },
+  const list = (state.showAll ? rows : rows.slice(0, 60)).map((r) => h("div", { class: "row" },
     h("div", { class: "row-main" },
       h("div", { class: "game" }, niceDate(r.date), r.source === "app" ? h("span", { class: "tag" }, "app") : null),
       balls(r.numbers, "small"),
       r.machine ? h("div", { class: "sub" }, `Machine: ${r.machine.replace(/-/g, " · ")}`) : null,
       r.note ? h("div", { class: "note" }, `⚠ ${r.note}`) : null),
     r.source === "app" ? h("button", { class: "btn small ghost", onclick: () => removeDraw(r) }, "Delete") : null));
-  return h("section", {}, h("label", {}, "Game"), sel,
-    h("p", { class: "lead" }, `${rows.length} draws saved. Newest first${rows.length > 60 ? " (showing 60)" : ""}.`), ...list);
+  const shown = state.showAll ? rows : rows.slice(0, 60);
+  const list2 = list.slice(0, shown.length);
+  return h("section", { class: "form-wide" }, h("h2", {}, "MASTER_DATA"),
+    h("p", { class: "lead" }, "Every saved draw for one game, newest first."),
+    h("label", {}, "Game"), sel,
+    h("p", { class: "lead", style: "margin-top:12px" }, `${rows.length.toLocaleString()} draws${rows.length ? ` from ${niceDate(rows[rows.length - 1].date)} to ${niceDate(rows[0].date)}` : ""}.`),
+    ...list2,
+    rows.length > 60 ? h("button", { class: "btn", onclick: () => { state.showAll = !state.showAll; render(); } }, state.showAll ? "Show fewer" : `Show all ${rows.length}`) : null);
 }
 
 async function removeDraw(r) {
@@ -323,7 +389,10 @@ function viewSettings() {
   const msg = h("div", { class: "msg", hidden: true });
   const show = (t, k) => { msg.textContent = t; msg.className = `msg ${k}`; msg.hidden = false; };
   const tokenUrl = "https://github.com/settings/personal-access-tokens/new?name=Folihen%20Lotto%20Center&description=Lets%20the%20Folihen%20Lotto%20Center%20app%20save%20results&target_name=FOLIHENWEB&expires_in=none&contents=write";
-  return h("section", {},
+  const dark = document.documentElement.getAttribute("data-theme") === "dark" || (!document.documentElement.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  return h("section", { class: "form" }, h("h2", {}, "Settings"),
+    h("h3", {}, "Appearance"),
+    h("div", { class: "actions" }, h("button", { class: "btn", onclick: toggleTheme }, dark ? "Switch to light mode" : "Switch to dark mode")),
     h("h3", {}, "Connect to GitHub"),
     h("p", { class: "lead" }, "The app saves results into your private lotto_ecosystem repository. It needs a GitHub token, entered once on each phone or computer. The token stays on this device only."),
     h("label", { for: "token" }, "GitHub token"), input,
@@ -346,23 +415,57 @@ function viewSettings() {
 }
 
 /* ------------------------------------------------------------------ shell */
+const TITLES = { dashboard: "Dashboard", add: "Add result", masterdata: "MASTER_DATA", engines: "Prediction Engines", settings: "Settings", about: "About" };
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const isDark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = isDark ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next); store.set("fl_theme", next);
+  setThemeIcon();
+  if (state.view === "settings") render();
+}
+function setThemeIcon() {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const isDark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const sun = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  const moon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+  $("#theme").innerHTML = isDark ? sun : moon;
+}
+function setMenu(open) {
+  $("#sidebar").classList.toggle("open", open);
+  $("#overlay").hidden = !open;
+}
 function render() {
   const app = $("#app"); app.replaceChildren();
-  const views = { today: viewToday, add: viewAdd, results: viewResults, settings: viewSettings };
-  if (!state.token && state.view !== "settings") {
+  const views = { dashboard: viewDashboard, add: viewAdd, masterdata: viewMasterData, engines: viewEngines, settings: viewSettings, about: viewAbout };
+  if (!views[state.view]) state.view = "dashboard";
+  if (!state.token && !["settings", "about"].includes(state.view)) {
     state.view = "settings";
     state.flash = state.flash || "This app on this screen is not connected yet. Paste your GitHub token below and tap Save and test. (A home-screen icon keeps its own settings, separate from the browser.)";
   }
   if (state.flash) { app.append(h("div", { class: "msg ok" }, state.flash)); state.flash = ""; }
   if (state.error) app.append(h("div", { class: "msg error" }, state.error, " ", h("button", { class: "btn small ghost", onclick: refresh }, "Try again")));
   app.append(views[state.view]());
-  document.querySelectorAll("nav button").forEach((b) => b.setAttribute("aria-current", b.dataset.view === state.view ? "page" : "false"));
+  $("#page-title").textContent = TITLES[state.view];
+  document.title = `${TITLES[state.view]} · Folihen Lotto Center`;
+  document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-current", b.dataset.view === state.view ? "page" : "false"));
+  const on = !!state.token && !state.error;
+  $("#conn-dot").classList.toggle("on", on);
+  $("#conn-text").textContent = !state.token ? "Not connected" : state.error ? "Connection problem" : "Connected to GitHub";
+  $("#sb-draws").textContent = state.rows.length ? `${state.rows.length.toLocaleString()} draws · 19 games` : "No results loaded";
+  $("#sb-loaded").textContent = state.loadedAt ? `Last loaded ${state.loadedAt.toLocaleTimeString()}` : "";
 }
 
-document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
+document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => {
   if (b.dataset.view === "add") state.form = null;
+  setMenu(false);
   go(b.dataset.view);
 }));
+document.querySelectorAll("[data-menu]").forEach((b) => b.addEventListener("click", () => setMenu(true)));
+$("#menu").addEventListener("click", () => setMenu(true));
+$("#overlay").addEventListener("click", () => setMenu(false));
+$("#theme").addEventListener("click", toggleTheme);
+setThemeIcon();
 $("#refresh").addEventListener("click", refresh);
 render();
 refresh();
