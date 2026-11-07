@@ -126,7 +126,9 @@ async function gh(method, path, token, body, raw = false) {
     };
     throw new GitHubError(res.status, hints[res.status] || `GitHub error ${res.status}. Please try again.`);
   }
-  return raw ? res.text() : res.json();
+  if (raw) return res.text();
+  const text = await res.text(); // some calls (e.g. starting a run) answer with an empty body
+  return text ? JSON.parse(text) : null;
 }
 async function loadOnline(token) {
   const url = `/repos/${REPO}/contents/${CSV_PATH}?ref=${BRANCH}`;
