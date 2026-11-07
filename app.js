@@ -251,16 +251,141 @@ function viewDashboard() {
             h("td", {}, gameName(c.g)), h("td", {}, c.first ? c.first.slice(0, 7) : "—"), h("td", {}, c.last ? niceDate(c.last) : "—"), h("td", { class: "num" }, c.n.toLocaleString())))))))));
 }
 
+/* ------------------------------------------------------------------ engines (run in the cloud) */
+const WORKFLOW = "run-engines.yml";
+// Game numbers used by every engine and the Master Launcher.
+const GAME_IDS = ["monday special", "wednesday midweek", "friday bonanza", "saturday national", "sunday aseda", "vag monday",
+  "noon monday", "vag tuesday", "noon tuesday", "lucky tuesday", "vag wednesday", "noon wednesday", "vag thursday",
+  "noon thursday", "fortune thursday", "vag friday", "noon friday", "vag saturday", "noon saturday"];
+const eng = { game: null, run: null, picks: null, files: null, scoreboard: "", msg: "", timer: null, loading: false };
+
+/* The next game to be drawn: today's earliest game with no result yet, else tomorrow's first. */
+function nextGame() {
+  const t = today();
+  for (let add = 0; add < 8; add++) {
+    const d = new Date(t); d.setDate(t.getDate() + add);
+    const games = Object.keys(GAMES).filter((g) => GAMES[g][1] === weekday(d) && !drawFor(g, iso(d))).sort((a, b) => GAMES[a][2] - GAMES[b][2]);
+    if (games.length) return games[0];
+  }
+  return "saturday national";
+}
+const twoDigits = (n) => String(n).padStart(2, "0");
+const ballRow = (nums, cls = "") => h("div", { class: `balls ${cls}` }, nums.map((n) => h("span", { class: "ball" }, twoDigits(n))));
+
+async function engLatestRun() {
+  const r = await gh("GET", `/repos/${REPO}/actions/workflows/${WORKFLOW}/runs?per_page=1`, state.token);
+  eng.run = r.workflow_runs && r.workflow_runs[0] ? r.workflow_runs[0] : null;
+}
+async function engLoadPicks() {
+  eng.loading = true;
+  try {
+    let list = [];
+    try { list = await gh("GET", `/repos/${REPO}/contents/predictions?ref=${BRANCH}`, state.token); } catch (e) { if (e.status !== 404) throw e; }
+    eng.files = Array.isArray(list) ? list.filter((f) => f.name.endsWith(".json")) : [];
+    const slug = eng.game.replace(/ /g, "-");
+    const mine = eng.files.filter((f) => f.name.split("_")[1] === slug).sort((a, b) => (a.name.split("_")[2] < b.name.split("_")[2] ? 1 : -1));
+    eng.picks = mine.length ? JSON.parse(await gh("GET", `/repos/${REPO}/contents/predictions/${mine[0].name}?ref=${BRANCH}`, state.token, null, true)) : null;
+    try { eng.scoreboard = await gh("GET", `/repos/${REPO}/contents/predictions/scoreboard.txt?ref=${BRANCH}`, state.token, null, true); } catch { eng.scoreboard = ""; }
+  } finally { eng.loading = false; }
+}
+async function engRefresh() {
+  try { await Promise.all([engLatestRun(), engLoadPicks()]); eng.msg = eng.msg && eng.msg.startsWith("Could not") ? "" : eng.msg; }
+  catch (e) { eng.msg = e.message; }
+  if (state.view === "engines") render();
+  clearTimeout(eng.timer);
+  if (eng.run && eng.run.status !== "completed" && state.view === "engines") eng.timer = setTimeout(engRefresh, 20000);
+}
+async function engStart() {
+  eng.msg = "Starting…"; render();
+  try {
+    await gh("POST", `/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, state.token,
+      { ref: BRANCH, inputs: { game: String(GAME_IDS.indexOf(eng.game) + 1) } });
+    eng.msg = `Started for ${gameName(eng.game)}. It takes about 5–15 minutes; this page updates by itself.`;
+    setTimeout(engRefresh, 6000);
+  } catch (e) {
+    eng.msg = e.status === 403 || e.status === 404
+      ? "This token can't start runs yet. On GitHub, edit the token and set Actions to \"Read and write\" (Repository permissions), then try again."
+      : e.message;
+  }
+  render();
+}
+async function engDownloadReport() {
+  if (!eng.picks || !eng.picks.report) return;
+  try {
+    const res = await fetch(`${API}/repos/${REPO}/contents/predictions/reports/${encodeURIComponent(eng.picks.report)}?ref=${BRANCH}`,
+      { headers: { Authorization: `Bearer ${state.token}`, Accept: "application/vnd.github.raw+json" }, cache: "no-store" });
+    if (!res.ok) throw new Error(`GitHub error ${res.status}`);
+    const url = URL.createObjectURL(await res.blob());
+    const a = h("a", { href: url, download: eng.picks.report }); document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch (e) { eng.msg = `Could not download the report: ${e.message}`; render(); }
+}
+
+function runStatusPanel() {
+  const r = eng.run;
+  if (!r) return null;
+  const started = new Date(r.created_at);
+  const mins = Math.max(0, Math.round((Date.now() - started) / 60000));
+  const label = r.status === "completed"
+    ? (r.conclusion === "success" ? "Last run finished" : `Last run did not finish (${r.conclusion})`)
+    : r.status === "queued" ? "Waiting to start…" : `Running… ${mins} min so far`;
+  return h("div", { class: `msg ${r.status !== "completed" ? "info" : r.conclusion === "success" ? "ok" : "error"}` },
+    `${label} · started ${started.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}`,
+    r.status === "completed" && r.conclusion !== "success" ? h("a", { href: r.html_url, target: "_blank", rel: "noopener", style: "margin-left:8px" }, "details") : null);
+}
+
+function picksPanel() {
+  const p = eng.picks;
+  if (eng.loading && !p) return h("p", { class: "lead" }, "Loading picks…");
+  if (!p) return h("div", { class: "panel" }, h("p", { style: "margin:0" }, `No cloud picks for ${gameName(eng.game)} yet. Press Run engines.`));
+  const engines = Object.keys(p.picks).filter((e) => p.picks[e] && p.picks[e].length);
+  const c10 = {}, c30 = {}, rs = {};
+  for (const e of engines) p.picks[e].slice(0, 60).forEach((n, i) => { rs[n] = (rs[n] || 0) + i + 1; if (i < 10) c10[n] = (c10[n] || 0) + 1; if (i < 30) c30[n] = (c30[n] || 0) + 1; });
+  const order = Array.from({ length: 90 }, (_, i) => i + 1).sort((a, b) => (c10[b] || 0) - (c10[a] || 0) || (c30[b] || 0) - (c30[a] || 0) || (rs[a] || 999) - (rs[b] || 999)).slice(0, 15);
+  const result = drawFor(p.game, p.target_date);
+  const won = result ? new Set(result.numbers.split("-").map(Number)) : null;
+  const mark = (nums) => h("div", { class: "balls" }, nums.map((n) => h("span", { class: `ball${won && won.has(n) ? " hit" : ""}` }, twoDigits(n))));
+  return h("div", {},
+    h("div", { class: "panel" },
+      h("h3", { style: "margin-top:0" }, `${gameName(p.game)} · draw of ${niceDate(p.target_date)}`),
+      h("p", { class: "lead" }, `Picks made ${new Date(p.run_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}, before the draw.`),
+      result ? h("div", {}, h("p", { style: "margin:4px 0" }, "Result:"), balls(result.numbers, "hit")) : null,
+      h("h3", {}, "Numbers the engines agree on"),
+      h("p", { class: "lead" }, "How many engines have each number in their Top 10 (a plain count, not yet weighted by track record)."),
+      h("div", { class: "table-wrap" }, h("table", { class: "cov" },
+        h("thead", {}, h("tr", {}, h("th", {}, "No."), h("th", { class: "num" }, "Top 10 of"), h("th", { class: "num" }, "Top 30 of"))),
+        h("tbody", {}, order.map((n) => h("tr", { class: won && won.has(n) ? "hitrow" : "" },
+          h("td", {}, twoDigits(n)), h("td", { class: "num" }, `${c10[n] || 0} / ${engines.length}`), h("td", { class: "num" }, `${c30[n] || 0} / ${engines.length}`)))))),
+      p.report ? h("div", { class: "actions" }, h("button", { class: "btn", onclick: engDownloadReport }, "Download Word report")) : null),
+    h("div", { class: "panel" }, h("h3", { style: "margin-top:0" }, "Each engine"),
+      ...engines.map((e) => h("div", { class: "engine-pick" },
+        h("div", { class: "engine-name" }, e.charAt(0).toUpperCase() + e.slice(1)),
+        mark(p.picks[e].slice(0, 10)),
+        h("details", {}, h("summary", {}, "Top 60"),
+          ...[0, 10, 20, 30, 40, 50].filter((i) => i < p.picks[e].length).map((i) =>
+            h("div", { class: "row60" }, h("span", { class: "pos" }, `${i + 1}–${Math.min(i + 10, p.picks[e].length)}`), mark(p.picks[e].slice(i, i + 10))))))),
+      Object.keys(p.picks).filter((e) => !(p.picks[e] && p.picks[e].length)).length
+        ? h("p", { class: "fine" }, `No picks from: ${Object.keys(p.picks).filter((e) => !(p.picks[e] && p.picks[e].length)).join(", ")}.`) : null),
+    eng.scoreboard ? h("details", { class: "panel" }, h("summary", {}, "Scoreboard (all games)"), h("pre", { class: "scoreboard" }, eng.scoreboard)) : null);
+}
+
 function viewEngines() {
+  if (!eng.game) { eng.game = nextGame(); engRefresh(); }
+  const running = eng.run && eng.run.status !== "completed";
+  const sel = h("select", { onchange: (ev) => { eng.game = ev.target.value; eng.picks = null; render(); engLoadPicks().then(render).catch((e) => { eng.msg = e.message; render(); }); } },
+    GAME_IDS.map((g) => h("option", { value: g, selected: g === eng.game }, gameName(g))));
   return h("section", {},
     h("h2", {}, "Prediction Engines"),
-    h("p", { class: "lead" }, "Kadijja, Desmond, Theresa and the other engines run on your PC, so they can't run from this website."),
-    h("div", { class: "panel" },
-      h("h3", { style: "margin-top:0" }, "Coming next"),
-      h("ul", { class: "plain" },
-        h("li", {}, "Each engine's Top 10 will be saved here before every draw, with the time it was made."),
-        h("li", {}, "After the draw, the hits will be counted automatically."),
-        h("li", {}, "Over a few weeks this shows, fairly, whether any engine beats picking numbers at random (about 0.56 hits per Top 10)."))));
+    h("p", { class: "lead" }, "Run all the engines in the cloud. Your PC can be off. Picks are saved before the draw and scored afterwards."),
+    h("div", { class: "panel form" },
+      h("label", {}, "Game"), sel,
+      h("div", { class: "actions" },
+        h("button", { class: "btn primary", disabled: running, onclick: engStart }, running ? "Engines are running…" : "Run engines"),
+        h("button", { class: "btn ghost", onclick: () => { eng.msg = ""; engRefresh(); } }, "Refresh")),
+      h("p", { class: "fine", style: "margin-top:10px" }, "Add the latest results first: the engines use them. A run takes about 5–15 minutes.")),
+    eng.msg ? h("div", { class: "msg info" }, eng.msg) : null,
+    runStatusPanel(),
+    picksPanel());
 }
 
 function viewAbout() {
@@ -388,7 +513,7 @@ function viewSettings() {
   const input = h("input", { type: "password", id: "token", placeholder: "github_pat_…", value: state.token, autocomplete: "off" });
   const msg = h("div", { class: "msg", hidden: true });
   const show = (t, k) => { msg.textContent = t; msg.className = `msg ${k}`; msg.hidden = false; };
-  const tokenUrl = "https://github.com/settings/personal-access-tokens/new?name=Folihen%20Lotto%20Center&description=Lets%20the%20Folihen%20Lotto%20Center%20app%20save%20results&target_name=FOLIHENWEB&expires_in=none&contents=write";
+  const tokenUrl = "https://github.com/settings/personal-access-tokens/new?name=Folihen%20Lotto%20Center&description=Lets%20the%20Folihen%20Lotto%20Center%20app%20save%20results&target_name=FOLIHENWEB&expires_in=none&contents=write&actions=write";
   const dark = document.documentElement.getAttribute("data-theme") === "dark" || (!document.documentElement.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
   return h("section", { class: "form" }, h("h2", {}, "Settings"),
     h("h3", {}, "Appearance"),
@@ -409,7 +534,7 @@ function viewSettings() {
       h("ol", {},
         h("li", {}, "Open ", h("a", { href: tokenUrl, target: "_blank", rel: "noopener" }, "this GitHub page"), " and sign in if asked."),
         h("li", {}, "Under Repository access, choose ", h("b", {}, "Only select repositories"), " and pick ", h("b", {}, "lotto_ecosystem"), "."),
-        h("li", {}, "Under Permissions, set ", h("b", {}, "Contents"), " to ", h("b", {}, "Read and write"), " (it may already be set)."),
+        h("li", {}, "Under Permissions, set ", h("b", {}, "Contents"), " and ", h("b", {}, "Actions"), " to ", h("b", {}, "Read and write"), " (Actions lets the app start engine runs)."),
         h("li", {}, "Click ", h("b", {}, "Generate token"), ", copy it, and paste it above."))),
     h("p", { class: "fine" }, state.loadedAt ? `Last loaded ${state.loadedAt.toLocaleTimeString()}. ${state.rows.length} draws.` : ""));
 }

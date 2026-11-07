@@ -204,3 +204,14 @@ details.machine .boxes { margin-top: 8px; }
 a { color: var(--accent); }
 ul.plain { padding-left: 20px; }
 ul.plain li { margin: 6px 0; }
+
+/* Prediction engines page */
+.engine-pick { padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.engine-pick:last-child { border-bottom: 0; }
+.engine-name { font-weight: 600; margin-bottom: 6px; }
+.row60 { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+.row60 .pos { width: 46px; color: var(--text-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
+.ball.hit { outline: 3px solid #16a34a; outline-offset: 1px; }
+tr.hitrow td { font-weight: 700; color: #16a34a; }
+pre.scoreboard { font-size: 11px; overflow-x: auto; white-space: pre; margin: 8px 0 0; }
+details.panel > summary { color: var(--text); font-weight: 600; }
