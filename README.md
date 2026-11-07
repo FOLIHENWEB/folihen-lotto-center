@@ -1,75 +1,25 @@
-# React + TypeScript + Vite
+# Folihen Lotto Center
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A small web app for entering and checking Ghana lottery draw results from a phone or computer, for all 19 games.
 
-Currently, two official plugins are available:
+- **Add result:** pick the game, check the date and type the five numbers (machine numbers are optional).
+- **This week:** the last 7 days of draws, showing which results are still missing.
+- **Results:** every saved draw for a game, newest first, with any data warnings.
+- **Settings:** connect the app to GitHub with a token (once per device).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Where the results are kept
 
-## React Compiler
+Results are saved to `results/draws.csv` in the private repository **FOLIHENWEB/lotto_ecosystem**. This app's own repository holds no results and no passwords. The GitHub token is kept only in the browser of each device that uses it.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+On the PC, `tools/sync_master_data.bat` in lotto_ecosystem copies new results into the MASTER_DATA Word files in `Documents\MASTER_DATA` and uploads any results typed straight into Word. `tools/turn_on_auto_sync.bat` makes it run every 30 minutes.
 
-## Expanding the ESLint configuration
+## Checks the app makes before saving
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- exactly 5 different numbers, each from 1 to 90
+- the date is the right weekday for the game (asks you to confirm if not)
+- the same game and date isn't already saved
+- the same five numbers aren't already saved for another game that day, which is how copy-and-paste mistakes usually show up (asks you to confirm)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Files
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+`index.html`, `styles.css` and `app.js` are the whole app. There is no build step, and GitHub Pages serves the files as they are.

@@ -2,12 +2,36 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>theresa-operations-center</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Folihen Lotto Center</title>
+    <meta name="description" content="Enter and check Ghana lottery draw results from your phone or computer." />
+    <meta name="theme-color" content="#0f5132" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lotto Center" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <header>
+      <div class="brand">
+        <img src="icons/favicon.svg" alt="" width="28" height="28" />
+        <div>
+          <h1>Folihen Lotto Center</h1>
+          <p>Results for all 19 games</p>
+        </div>
+      </div>
+      <button id="refresh" class="icon-btn" aria-label="Reload results" title="Reload results">⟳</button>
+    </header>
+    <div id="status" class="status" hidden></div>
+    <main id="app"></main>
+    <nav>
+      <button data-view="today"><span aria-hidden="true">📅</span>This week</button>
+      <button data-view="add"><span aria-hidden="true">➕</span>Add result</button>
+      <button data-view="results"><span aria-hidden="true">📋</span>Results</button>
+      <button data-view="settings"><span aria-hidden="true">⚙️</span>Settings</button>
+    </nav>
+    <script src="app.js"></script>
   </body>
 </html>
