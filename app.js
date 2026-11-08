@@ -365,7 +365,7 @@ function progressBar() {
 }
 
 /* Consensus Intelligence Platform: the engines' picks weighed by their record. */
-function cipCard(c, mark) {
+function cipCard(c, mark, rec) {
   const cap = (e) => (e ? e.charAt(0).toUpperCase() + e.slice(1) : "");
   const pw = c.engine_power || {};
   return h("div", { class: "cip" },
@@ -379,9 +379,18 @@ function cipCard(c, mark) {
       `Strongest engine for this game on its record: ${cap(c.strongest_engine)} (Top 10 at ${(pw[c.strongest_engine] || 1).toFixed(2)}× chance).`) : null,
     (c.best_positions || []).length ? h("p", { class: "fine", style: "margin-top:4px" }, "Strongest positions: " +
       c.best_positions.map((b) => `${cap(b.engine)} #${b.positions} (${b.vs_chance.toFixed(2)}×)`).join("; ") + ".") : null,
-    h("p", { class: "fine", style: "margin-top:4px" }, "Tested on 1,280 past draws: Top 10 0.59 winning numbers per draw against 0.56 for chance; not yet proven. The scoreboard tracks it live."));
+    (c.dna_used || []).length ? h("p", { class: "fine", style: "margin-top:4px" }, `Also used this game's proven patterns: ${c.dna_used.join(", ")}.`) : null,
+    h("p", { class: "fine", style: "margin-top:4px" }, rec && rec.all
+      ? `Record in this game: ${rec.all.draws} draws, Top 10 ${rec.all.top10.toFixed(2)} winning numbers per draw (chance 0.56), banker dropped ${pct(rec.all.banker)} (chance 5.6%). ${CONF_TEXT[rec.confidence] || ""}`
+      : "Tested on past draws: Top 10 about 0.59 winning numbers per draw against 0.56 for chance; not yet proven. The CIP page tracks it."));
 }
-
+const pct = (x) => `${(100 * x).toFixed(1)}%`;
+const CONF_TEXT = {
+  "beating chance": "So far it is beating chance here, but check again as live draws come in.",
+  "at chance": "So far it is no better than chance here.",
+  "below chance": "So far it is doing worse than chance here.",
+  "too few draws": "Too few draws to judge yet.",
+};
 function picksPanel() {
   const p = eng.picks;
   if (eng.loading && !p) return h("p", { class: "lead" }, "Loading picks…");
@@ -398,7 +407,7 @@ function picksPanel() {
       h("h3", { style: "margin-top:0" }, `${gameName(p.game)} · draw of ${niceDate(p.target_date)}`),
       h("p", { class: "lead" }, `Picks made ${new Date(p.run_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}, before the draw.`),
       result ? h("div", {}, h("p", { style: "margin:4px 0" }, "Result:"), balls(result.numbers, "hit")) : null,
-      p.cip ? cipCard(p.cip, mark) : null,
+      p.cip ? cipCard(p.cip, mark, cipv.dna && cipv.dna.games[p.game] ? cipv.dna.games[p.game].cip : null) : null,
       h("h3", {}, "Numbers the engines agree on"),
       h("p", { class: "lead" }, "How many engines have each number in their Top 10 (a plain count, not yet weighted by track record)."),
       h("div", { class: "table-wrap" }, h("table", { class: "cov" },
@@ -496,9 +505,112 @@ function viewHits() {
     h("h3", {}, `${gameName(perf.game)}: average winning numbers caught per draw`),
     h("p", { class: "fine", style: "margin-top:0" }, "Green: at least 15% above random picks. Red: at least 15% below. Few draws mean big swings by luck."),
     board,
+    by.cip ? (() => {
+      const pos = by.cip.map((r) => r.positions.split(" ").filter(Boolean).map((x) => Number(x.split("@")[1])));
+      const b = pos.filter((p) => p.includes(1)).length / pos.length, t = pos.filter((p) => p.some((q) => q <= 2)).length / pos.length;
+      return h("p", { class: "fine" }, `CIP banker dropped in ${pct(b)} of draws (chance 5.6%); at least one of its two sure dropped in ${pct(t)} (chance 10.9%).`);
+    })() : null,
     h("h3", {}, `Draw by draw (${keys.length})`),
     ...list,
     keys.length > 25 ? h("button", { class: "btn", onclick: () => { perf.showAll = !perf.showAll; render(); } }, perf.showAll ? "Show fewer" : `Show all ${keys.length}`) : null);
+}
+
+/* ------------------------------------------------------------------ CIP page */
+const cipv = { game: null, dna: null, picks: {}, loading: false, err: "" };
+async function cipLoad(game) {
+  cipv.loading = true; cipv.err = ""; render();
+  try {
+    if (!cipv.dna) cipv.dna = JSON.parse(await gh("GET", `/repos/${REPO}/contents/predictions/game_dna.json?ref=${BRANCH}`, state.token, null, true));
+    if (!perf.rows && !perf.loading) perfLoad();
+    if (!(game in cipv.picks)) {
+      if (!eng.files) {
+        let list = [];
+        try { list = await gh("GET", `/repos/${REPO}/contents/predictions?ref=${BRANCH}`, state.token); } catch (e) { if (e.status !== 404) throw e; }
+        eng.files = Array.isArray(list) ? list.filter((f) => f.name.endsWith(".json")) : [];
+      }
+      const slug = game.replace(/ /g, "-");
+      const mine = eng.files.filter((f) => f.name.split("_")[1] === slug).sort((a, b) => (a.name.split("_")[2] < b.name.split("_")[2] ? 1 : -1));
+      cipv.picks[game] = mine.length ? JSON.parse(await gh("GET", `/repos/${REPO}/contents/predictions/${mine[0].name}?ref=${BRANCH}`, state.token, null, true)) : null;
+    }
+  } catch (e) { cipv.err = e.message; }
+  cipv.loading = false; render();
+}
+const FEATURE_NAME = { hot: "Hot numbers", overdue: "Overdue numbers", repeat: "Repeats of last draw", machine: "Last machine numbers", other_games: "Other games, last 3 days", theresa_later: "Theresa's picks dropping later", hpt: "Hit Position Tracker pathways" };
+const capE = (e) => (e === "cip" ? "CIP" : e ? e.charAt(0).toUpperCase() + e.slice(1) : "");
+function viewCip() {
+  if (!cipv.game) cipv.game = eng.game || nextGame();
+  if (!cipv.loading && !cipv.err && (!cipv.dna || !(cipv.game in cipv.picks))) cipLoad(cipv.game);
+  const sel = h("select", { onchange: (e) => { cipv.game = e.target.value; render(); } },
+    GAME_IDS.map((g) => h("option", { value: g, selected: g === cipv.game }, gameName(g))));
+  const head = [h("h2", {}, "Consensus Intelligence Platform"),
+    h("p", { class: "lead" }, "The CIP weighs every engine's picks by how often each engine's numbers have dropped, at each position, in this game. It gives a banker, two sure, Top 5 and Top 10."),
+    h("div", { class: "panel form" }, h("label", {}, "Game"), sel)];
+  if (!cipv.dna) return h("section", { class: "form-wide" }, ...head, h("p", { class: "lead" }, cipv.err || "Loading…"));
+  const g = cipv.game, dna = cipv.dna.games[g], p = cipv.picks[g];
+  const result = p ? drawFor(p.game, p.target_date) : null;
+  const won = result ? new Set(result.numbers.split("-").map(Number)) : null;
+  const mark = (nums) => h("div", { class: "balls" }, nums.map((n) => h("span", { class: `ball${won && won.has(n) ? " hit" : ""}` }, twoDigits(n))));
+  // 1. latest recommendation
+  const recPanel = h("div", { class: "panel" },
+    h("h3", { style: "margin-top:0" }, p ? `Latest picks · draw of ${niceDate(p.target_date)}` : "Latest picks"),
+    !(g in cipv.picks) ? h("p", { class: "lead" }, "Loading…")
+      : !p ? h("p", { style: "margin:0" }, `No run for ${gameName(g)} yet. Run the engines for this game (Prediction Engines).`)
+      : h("div", {},
+        h("p", { class: "lead" }, `Made ${new Date(p.run_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}, before the draw.`),
+        result ? h("div", {}, h("p", { style: "margin:4px 0" }, "Result:"), balls(result.numbers, "hit")) : null,
+        p.cip ? cipCard(p.cip, mark, dna ? dna.cip : null) : h("p", {}, "This run was made before the CIP existed. Run the engines again to get its picks.")));
+  if (!dna) return h("section", { class: "form-wide" }, ...head, recPanel, h("p", { class: "lead" }, "No profile for this game yet."));
+  // 2. the CIP's scoreboard in this game
+  const c = dna.cip || {};
+  const srcRows = [["all", "All records"], ["live", "Live picks"], ["history", "Saved predictions"], ["replay", "Replay test"]].filter(([k]) => c[k]);
+  const sb = h("div", { class: "panel" },
+    h("h3", { style: "margin-top:0" }, "How the CIP has done in this game ", h("span", { class: `tag conf-${(c.confidence || "").replace(/ /g, "-")}` }, c.confidence || "no record")),
+    h("div", { class: "table-wrap" }, h("table", { class: "cov compact" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Records"), h("th", { class: "num" }, "Draws"), h("th", { class: "num" }, "Top 5"), h("th", { class: "num" }, "Top 10"), h("th", { class: "num" }, "Banker"), h("th", { class: "num" }, "Two sure"))),
+      h("tbody", {},
+        ...srcRows.map(([k, t]) => h("tr", {}, h("td", {}, t), h("td", { class: "num" }, String(c[k].draws)),
+          h("td", { class: "num" }, c[k].top5.toFixed(2)), h("td", { class: "num" }, c[k].top10.toFixed(2)),
+          h("td", { class: "num" }, pct(c[k].banker)), h("td", { class: "num" }, pct(c[k].two_sure)))),
+        h("tr", { class: "chance" }, h("td", {}, "Random picks"), h("td", {}), h("td", { class: "num" }, "0.28"), h("td", { class: "num" }, "0.56"), h("td", { class: "num" }, "5.6%"), h("td", { class: "num" }, "10.9%"))))),
+    h("p", { class: "fine" }, "Top 5 and Top 10: winning numbers caught per draw. Banker: how often the banker dropped. Two sure: how often at least one of the two dropped. " + (CONF_TEXT[c.confidence] || "")),
+    h("button", { class: "btn ghost", onclick: () => { perf.game = g; state.view = "hits"; render(); } }, "See every draw in Engine hits"));
+  // 3. all games at a glance
+  const all = h("details", { class: "panel" }, h("summary", {}, "CIP in every game"),
+    h("div", { class: "table-wrap" }, h("table", { class: "cov compact" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Game"), h("th", { class: "num" }, "Draws"), h("th", { class: "num" }, "Top 10"), h("th", { class: "num" }, "Banker"), h("th", {}, "So far"))),
+      h("tbody", {}, GAME_IDS.filter((x) => cipv.dna.games[x]).map((x) => { const r = cipv.dna.games[x].cip || {}; const a = r.all;
+        return h("tr", {}, h("td", {}, gameName(x)), h("td", { class: "num" }, a ? String(a.draws) : "–"), h("td", { class: "num" }, a ? a.top10.toFixed(2) : "–"),
+          h("td", { class: "num" }, a ? pct(a.banker) : "–"), h("td", {}, r.confidence || "")); })))),
+    h("p", { class: "fine" }, "Chance: Top 10 0.56, banker 5.6%. With 19 games, one or two will look good or bad by luck alone."));
+  // 4. Game DNA
+  const f = dna.facts;
+  const engs = Object.entries(dna.engines).sort((a, b) => b[1].top10 - a[1].top10);
+  const bestBand = (b) => Object.entries(b).sort((x, y) => y[1] - x[1])[0];
+  const W = Object.entries(dna.watched);
+  const dnaPanel = h("div", { class: "panel" },
+    h("h3", { style: "margin-top:0" }, `${gameName(g)} DNA`),
+    h("ul", { class: "plain dna-facts" },
+      h("li", {}, `${f.draws} draws on record, ${niceDate(f.first)} to ${niceDate(f.last)}; ${f.with_machine} with machine numbers.`),
+      h("li", {}, `Draw total: usually ${f.total_usual[0]}–${f.total_usual[1]}, average ${f.total_average}. Most often ${f.odd_most_common} odd and ${f.high_most_common} high (46–90) numbers.`),
+      dna.strongest_engine ? h("li", {}, `Strongest engine here: ${capE(dna.strongest_engine)} (Top 10 at ${dna.strongest_power.toFixed(2)}× chance on its record).`) : null,
+      dna.best_positions.length ? h("li", {}, "Strongest positions: " + dna.best_positions.map((b) => `${capE(b.engine)} #${b.positions} (${b.vs_chance.toFixed(2)}×)`).join("; ") + ".") : null),
+    h("h4", {}, "Engines in this game (what the CIP uses)"),
+    h("div", { class: "table-wrap" }, h("table", { class: "cov compact" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Engine"), h("th", { class: "num" }, "Draws"), h("th", { class: "num" }, "Top 10"), h("th", { class: "num" }, "vs chance"), h("th", {}, "Best positions"))),
+      h("tbody", {}, engs.map(([e, x]) => { const bb = bestBand(x.bands); const r = x.top10 / (50 / 90);
+        return h("tr", {}, h("td", {}, capE(e)), h("td", { class: "num" }, String(x.draws)), h("td", { class: "num" }, x.top10.toFixed(2)),
+          h("td", { class: `num ${r >= 1.15 ? "good" : r <= 0.85 ? "weak" : ""}` }, `${r.toFixed(2)}×`), h("td", {}, `#${bb[0]} (${bb[1].toFixed(2)}×)`)); })))),
+    h("h4", {}, "Patterns being watched"),
+    h("p", { class: "fine", style: "margin-top:0" }, "Each pattern is tested on every past draw of this game. The CIP only uses one after it clearly beats chance (score 3 or more), re-checked weekly after Sunday Aseda. Scores between −2 and +2 are normal luck."),
+    h("div", { class: "table-wrap" }, h("table", { class: "cov compact" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Pattern"), h("th", { class: "num" }, "vs chance"), h("th", { class: "num" }, "Score"), h("th", {}, "Status"), h("th", {}, "Its numbers now"))),
+      h("tbody", {}, W.map(([k, x]) => h("tr", {},
+        h("td", {}, FEATURE_NAME[k] || k),
+        h("td", { class: "num" }, x.vs_chance ? `${x.vs_chance.toFixed(2)}×` : "–"),
+        h("td", { class: "num" }, (x.z >= 0 ? "+" : "") + x.z.toFixed(1)),
+        h("td", {}, h("span", { class: `tag ${x.status === "active" ? "conf-beating-chance" : ""}` }, x.status === "active" ? "used" : "watching")),
+        h("td", { class: "pos-list" }, (x.next_numbers || []).length ? x.next_numbers.slice(0, 12).map(twoDigits).join(" ") + (x.next_numbers.length > 12 ? " …" : "") : "–")))))));
+  return h("section", { class: "form-wide" }, ...head, cipv.err ? h("div", { class: "msg error" }, cipv.err) : null, recPanel, sb, dnaPanel, all);
 }
 
 function viewAbout() {
@@ -707,7 +819,7 @@ function viewSettings() {
 }
 
 /* ------------------------------------------------------------------ shell */
-const TITLES = { dashboard: "Dashboard", add: "Add result", masterdata: "MASTER_DATA", engines: "Prediction Engines", hits: "Engine hits", settings: "Settings", about: "About" };
+const TITLES = { dashboard: "Dashboard", add: "Add result", masterdata: "MASTER_DATA", engines: "Prediction Engines", cip: "CIP", hits: "Engine hits", settings: "Settings", about: "About" };
 function toggleTheme() {
   const cur = document.documentElement.getAttribute("data-theme");
   const isDark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -729,7 +841,7 @@ function setMenu(open) {
 }
 function render() {
   const app = $("#app"); app.replaceChildren();
-  const views = { dashboard: viewDashboard, add: viewAdd, masterdata: viewMasterData, engines: viewEngines, hits: viewHits, settings: viewSettings, about: viewAbout };
+  const views = { dashboard: viewDashboard, add: viewAdd, masterdata: viewMasterData, engines: viewEngines, cip: viewCip, hits: viewHits, settings: viewSettings, about: viewAbout };
   if (!views[state.view]) state.view = "dashboard";
   if (!state.token && !["settings", "about"].includes(state.view)) {
     state.view = "settings";

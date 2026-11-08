@@ -236,7 +236,14 @@ input.box[readonly] { background: rgba(0,0,0,.05); color: var(--text-secondary);
 table.cov td.good { color: #15803d; font-weight: 700; }
 table.cov td.weak { color: #b91c1c; }
 table.cov tr.chance td { color: var(--text-secondary); font-style: italic; }
-table.cov.compact td { padding: 5px 4px; font-size: 13px; }
+table.cov.compact td, table.cov.compact th { padding: 5px 4px; font-size: 13px; }
 .hit-draw { padding: 12px 14px; }
 .hit-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .pos-list { color: var(--text-secondary); font-size: 12px; }
+
+/* CIP page */
+.tag.conf-beating-chance { background: #dcfce7; color: #166534; }
+.tag.conf-below-chance { background: #fee2e2; color: #991b1b; }
+.tag.conf-at-chance, .tag.conf-too-few-draws { background: var(--chip, #eef2f7); }
+.dna-facts li { margin: 4px 0; }
+h4 { margin: 16px 0 6px; }
