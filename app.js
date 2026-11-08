@@ -9,7 +9,7 @@ const REPO = "FOLIHENWEB/lotto_ecosystem";
 const CSV_PATH = "results/draws.csv";
 const BRANCH = "main";
 const API = "https://api.github.com";
-const FIELDS = ["game", "date", "numbers", "machine", "source", "added_at", "note"];
+const FIELDS = ["game", "date", "numbers", "machine", "event", "source", "added_at", "note"];
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 // file stem -> [display name, weekday 0=Mon, slot 0=Noon 1=main 2=VAG]  (same as tools/lotto_data.py)
@@ -429,28 +429,46 @@ function viewAbout() {
         h("li", {}, "History comes from your MASTER_DATA, the GhanaYello archive and the printed Lotto paper, checked against each other."))));
 }
 
+const sumOf = (s) => { const n = (s || "").split(/\D+/).filter(Boolean).map(Number); return n.length === 5 ? n.reduce((a, b) => a + b, 0) : ""; };
+
+/* Add a result, or finish one saved earlier: machine numbers and the event number are
+   usually released after the draw, so they can be added to the same draw later. */
 function viewAdd() {
   const f = state.form || { game: "vag monday", date: iso(lastDrawDate("vag monday")) };
   state.form = f;
   const msg = h("div", { class: "msg", hidden: true });
-  f.n = f.n || ["", "", "", "", ""]; f.m = f.m || ["", "", "", "", ""];
+  const existing = drawFor(f.game, f.date);
+  if (f.loadedFor !== `${f.game}|${f.date}`) {  // (re)fill the boxes when the game or date changes
+    f.loadedFor = `${f.game}|${f.date}`;
+    const split = (s) => { const n = (s || "").split(/\D+/).filter(Boolean); return n.length === 5 ? n : ["", "", "", "", ""]; };
+    // typing a new result and then changing the date keeps what was typed
+    const keep = !existing && !f.wasExisting && f.n;
+    f.n = existing ? split(existing.numbers) : keep ? f.n : ["", "", "", "", ""];
+    f.m = existing ? split(existing.machine) : keep && f.m ? f.m : ["", "", "", "", ""];
+    f.e = existing ? existing.event || "" : keep ? f.e || "" : "";
+    f.wasExisting = !!existing;
+  }
   const gameSel = h("select", { id: "game", onchange: (e) => { f.game = e.target.value; f.date = iso(lastDrawDate(f.game)); f.confirmed = false; render(); } },
     DAYS.map((day, wd) => h("optgroup", { label: day },
       Object.keys(GAMES).filter((g) => GAMES[g][1] === wd).sort((a, b) => GAMES[a][2] - GAMES[b][2])
         .map((g) => h("option", { value: g, selected: g === f.game }, gameName(g))))));
   const dateIn = h("input", { type: "date", id: "date", value: f.date, max: iso(new Date(Date.now() + 86400000)), onchange: (e) => { f.date = e.target.value; f.confirmed = false; render(); } });
-  const boxes = (prefix) => h("div", { class: "boxes" }, [0, 1, 2, 3, 4].map((i) =>
+  const totalEl = { n: h("span", { class: "total" }), m: h("span", { class: "total" }) };
+  const showTotal = (p) => { const t = sumOf(f[p].join("-")); totalEl[p].textContent = t === "" ? "" : `Total ${t}`; };
+  const boxes = (prefix, locked = false) => h("div", { class: "boxes" }, [0, 1, 2, 3, 4].map((i) =>
     h("input", {
       class: "box", id: `${prefix}${i}`, inputmode: "numeric", pattern: "[0-9]*", maxlength: "2", autocomplete: "off",
-      "aria-label": `Number ${i + 1}`, value: f[prefix][i] || "",
+      "aria-label": `${prefix === "n" ? "Winning" : "Machine"} number ${i + 1}`, value: f[prefix][i] || "", readonly: locked,
       oninput: (e) => {
         e.target.value = e.target.value.replace(/\D/g, "").slice(0, 2);
-        f[prefix][i] = e.target.value; f.confirmed = false;
+        f[prefix][i] = e.target.value; f.confirmed = false; showTotal(prefix);
         if (e.target.value.length === 2 && i < 4) $(`#${prefix}${i + 1}`).focus();
       },
     })));
-  const existing = drawFor(f.game, f.date);
+  const eventIn = h("input", { id: "event", type: "text", inputmode: "numeric", placeholder: "e.g. 3342", value: f.e, autocomplete: "off",
+    oninput: (e) => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6); f.e = e.target.value; } });
   const wrongDay = f.date && weekday(fromIso(f.date)) !== GAMES[f.game][1];
+  const missing = existing && (!existing.machine || !existing.event);
 
   const save = async () => {
     const read = (p) => [0, 1, 2, 3, 4].map((i) => $(`#${p}${i}`).value);
@@ -462,9 +480,33 @@ function viewAdd() {
       if (m.error) return show(`Machine numbers: ${m.error}`, "error");
       machine = m.nums.join("-");
     }
+    const event = (f.e || "").trim();
     if (!f.date) return show("Choose the draw date.", "error");
     if (!state.token) return show("Add your GitHub token in Settings first.", "error");
     const numbers = main.nums.join("-");
+
+    if (existing) {  // finishing a saved draw: machine numbers / event number
+      const changes = [];
+      if (machine && machine !== existing.machine) changes.push(existing.machine ? `machine numbers ${existing.machine} → ${machine}` : `machine numbers ${machine}`);
+      if (event && event !== (existing.event || "")) changes.push(existing.event ? `event ${existing.event} → ${event}` : `event ${event}`);
+      if (!changes.length) return show("Nothing new to save: add the machine numbers or the event number.", "warn");
+      const replacing = (machine && existing.machine && machine !== existing.machine) || (event && existing.event && event !== existing.event);
+      if (replacing && !f.confirmed) { f.confirmed = true; return show(`This changes what is already saved: ${changes.join("; ")}. Tap Save again to confirm.`, "warn"); }
+      btn.disabled = true; btn.textContent = "Saving…";
+      try {
+        await commitChange(state.token, (rows) => {
+          const hit = rows.find((r) => r.game === f.game && r.date === f.date);
+          if (!hit) return null;
+          if (machine) hit.machine = machine;
+          if (event) hit.event = event;
+          return rows;
+        }, `Update ${gameName(f.game)} ${f.date}: ${changes.join(", ")}`);
+        state.flash = `Updated ${gameName(f.game)}, ${niceDate(f.date)}: ${changes.join("; ")}. Your PC adds it to MASTER_DATA at its next sync.`;
+        state.form = null; go("dashboard");
+      } catch (e) { show(e.message, "error"); btn.disabled = false; btn.textContent = "Save"; }
+      return;
+    }
+
     const notes = [];
     if (wrongDay) notes.push(`date is a ${DAYS[weekday(fromIso(f.date))]}, not this game's draw day`);
     const twins = state.rows.filter((r) => r.date === f.date && r.game !== f.game && sameSet(r.numbers, numbers));
@@ -479,29 +521,38 @@ function viewAdd() {
       await commitChange(state.token, (rows) => {
         const hit = rows.find((r) => r.game === f.game && r.date === f.date);
         if (hit) { clash = hit; return null; }
-        return [...rows, { game: f.game, date: f.date, numbers, machine, source: "app", added_at: new Date().toISOString().replace(/\.\d+Z$/, "+00:00"), note: notes.join("; ") }];
+        return [...rows, { game: f.game, date: f.date, numbers, machine, event, source: "app", added_at: new Date().toISOString().replace(/\.\d+Z$/, "+00:00"), note: notes.join("; ") }];
       }, `Add ${gameName(f.game)} ${f.date}: ${numbers}`);
       if (clash) {
-        show(`${gameName(f.game)} on ${niceDate(f.date)} is already saved as ${clash.numbers}. Nothing was changed. To replace it, delete it on the Results page first.`, "error");
+        show(`${gameName(f.game)} on ${niceDate(f.date)} is already saved as ${clash.numbers}. Nothing was changed.`, "error");
         btn.disabled = false; btn.textContent = "Save result"; return;
       }
-      state.flash = `Saved ${gameName(f.game)}, ${niceDate(f.date)}: ${numbers}. Your PC adds it to MASTER_DATA at its next sync.`;
+      state.flash = `Saved ${gameName(f.game)}, ${niceDate(f.date)}: ${numbers} (total ${sumOf(numbers)})${machine ? `, machine ${machine}` : ""}. Your PC adds it to MASTER_DATA at its next sync.`;
       state.form = null; go("dashboard");
     } catch (e) {
       show(e.message, "error"); btn.disabled = false; btn.textContent = "Save result";
     }
   };
   function show(text, kind) { msg.textContent = text; msg.className = `msg ${kind}`; msg.hidden = false; }
-  const btn = h("button", { class: "btn primary wide", onclick: save }, "Save result");
+  const btn = h("button", { class: "btn primary wide", onclick: save }, existing ? (missing ? "Save machine / event numbers" : "Save changes") : "Save result");
+  queueMicrotask(() => { showTotal("n"); showTotal("m"); });
 
-  return h("section", { class: "form" }, h("h2", {}, "Add result"),
+  return h("section", { class: "form" }, h("h2", {}, existing ? "Finish a saved result" : "Add result"),
     h("label", { for: "game" }, "Game"), gameSel,
     h("label", { for: "date" }, "Draw date"), dateIn,
     wrongDay ? h("div", { class: "msg warn" }, `${niceDate(f.date)} is not a ${DAYS[GAMES[f.game][1]]}. Check the date.`) : null,
-    existing ? h("div", { class: "msg info" }, h("div", {}, `Already saved for this date:`), balls(existing.numbers, "small")) : null,
-    h("label", {}, "Winning numbers"), boxes("n"),
-    h("details", { class: "machine" }, h("summary", {}, "Machine numbers (optional)"), boxes("m")),
+    existing ? h("div", { class: "msg info" }, missing
+      ? "This draw is already saved. Add the machine numbers and/or event number below when they are released."
+      : "This draw is complete. You can correct the machine numbers or event number below.") : null,
+    h("div", { class: "label-row" }, h("label", {}, "Winning numbers"), totalEl.n), boxes("n", !!existing),
+    h("div", { class: "label-row" }, h("label", {}, "Machine numbers ", h("span", { class: "hint" }, "(can be added later)")), totalEl.m), boxes("m"),
+    h("label", { for: "event" }, "Event number ", h("span", { class: "hint" }, "(optional)")), eventIn,
     msg, btn);
+}
+
+function finishLater(r) {
+  state.form = { game: r.game, date: r.date };
+  go("add");
 }
 
 function viewMasterData() {
@@ -514,10 +565,13 @@ function viewMasterData() {
   const list = (state.showAll ? rows : rows.slice(0, 60)).map((r) => h("div", { class: "row" },
     h("div", { class: "row-main" },
       h("div", { class: "game" }, niceDate(r.date), r.source === "app" ? h("span", { class: "tag" }, "app") : null),
-      balls(r.numbers, "small"),
-      r.machine ? h("div", { class: "sub" }, `Machine: ${r.machine.replace(/-/g, " · ")}`) : null,
+      h("div", { class: "draw-line" }, balls(r.numbers, "small"), h("span", { class: "total" }, `Total ${sumOf(r.numbers)}`)),
+      r.machine ? h("div", { class: "sub" }, `Machine: ${r.machine.replace(/-/g, " · ")}  ·  Total ${sumOf(r.machine)}`) : null,
+      r.event ? h("div", { class: "sub" }, `Event ${r.event}`) : null,
       r.note ? h("div", { class: "note" }, `⚠ ${r.note}`) : null),
-    r.source === "app" ? h("button", { class: "btn small ghost", onclick: () => removeDraw(r) }, "Delete") : null));
+    h("div", { class: "row-actions" },
+      h("button", { class: "btn small ghost", onclick: () => finishLater(r) }, !r.machine || !r.event ? "Add machine/event" : "Edit"),
+      r.source === "app" ? h("button", { class: "btn small ghost", onclick: () => removeDraw(r) }, "Delete") : null)));
   const shown = state.showAll ? rows : rows.slice(0, 60);
   const list2 = list.slice(0, shown.length);
   return h("section", { class: "form-wide" }, h("h2", {}, "MASTER_DATA"),

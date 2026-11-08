@@ -154,7 +154,7 @@ table.cov td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow-x: auto; }
 
 label { display: block; font-weight: 600; margin: 16px 0 6px; }
-select, input[type="date"], input[type="password"] {
+select, input[type="date"], input[type="password"], input[type="text"] {
   width: 100%; font-size: 17px; padding: 11px 12px; border-radius: 10px;
   border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);
 }
@@ -224,3 +224,9 @@ details.panel > summary { color: var(--text); font-weight: 600; }
 .chip.done { color: #15803d; border-color: #86efac; }
 .chip.now { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 .chip.bad { color: #b91c1c; border-color: #fca5a5; }
+.label-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.total { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.draw-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.row-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+input.box[readonly] { background: rgba(0,0,0,.05); color: var(--text-secondary); }
+.hint { font-weight: 400; color: var(--text-secondary); font-size: 13px; }
