@@ -119,6 +119,8 @@ async function gh(method, path, token, body, raw = false) {
     throw new GitHubError(0, "No internet connection. Nothing was saved.");
   }
   if (!res.ok) {
+    if ((res.status === 403 || res.status === 404) && path.includes("/actions/"))
+      throw new GitHubError(res.status, "This token can't see or start engine runs. On GitHub, edit the token and add Actions: Read and write (Repository permissions).");
     const hints = {
       401: "GitHub did not accept the token. Check it in Settings (it may have expired).",
       403: "The token is not allowed to change lotto_ecosystem. In GitHub, give it Contents: Read and write.",
