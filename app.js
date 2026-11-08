@@ -364,11 +364,29 @@ function progressBar() {
         (st.status === "completed" ? (st.conclusion === "success" ? "✓ " : "✕ ") : st.status === "in_progress" ? "● " : "") + st.name.slice(8)))));
 }
 
+/* Consensus Intelligence Platform: the engines' picks weighed by their record. */
+function cipCard(c, mark) {
+  const cap = (e) => (e ? e.charAt(0).toUpperCase() + e.slice(1) : "");
+  const pw = c.engine_power || {};
+  return h("div", { class: "cip" },
+    h("h3", { style: "margin-top:0" }, "Consensus Intelligence Platform"),
+    h("div", { class: "cip-grid" },
+      h("div", {}, h("div", { class: "cip-label" }, "Banker"), mark([c.banker])),
+      h("div", {}, h("div", { class: "cip-label" }, "Two sure"), mark(c.two_sure))),
+    h("div", { class: "cip-label" }, "Top 5"), mark(c.top5),
+    h("div", { class: "cip-label" }, "Top 10"), mark(c.top10),
+    c.strongest_engine ? h("p", { class: "fine", style: "margin-top:10px" },
+      `Strongest engine for this game on its record: ${cap(c.strongest_engine)} (Top 10 at ${(pw[c.strongest_engine] || 1).toFixed(2)}× chance).`) : null,
+    (c.best_positions || []).length ? h("p", { class: "fine", style: "margin-top:4px" }, "Strongest positions: " +
+      c.best_positions.map((b) => `${cap(b.engine)} #${b.positions} (${b.vs_chance.toFixed(2)}×)`).join("; ") + ".") : null,
+    h("p", { class: "fine", style: "margin-top:4px" }, "Tested on 1,280 past draws: Top 10 0.59 winning numbers per draw against 0.56 for chance; not yet proven. The scoreboard tracks it live."));
+}
+
 function picksPanel() {
   const p = eng.picks;
   if (eng.loading && !p) return h("p", { class: "lead" }, "Loading picks…");
   if (!p) return h("div", { class: "panel" }, h("p", { style: "margin:0" }, `No cloud picks for ${gameName(eng.game)} yet. Press Run engines.`));
-  const engines = Object.keys(p.picks).filter((e) => p.picks[e] && p.picks[e].length);
+  const engines = Object.keys(p.picks).filter((e) => e !== "cip" && p.picks[e] && p.picks[e].length);
   const c10 = {}, c30 = {}, rs = {};
   for (const e of engines) p.picks[e].slice(0, 60).forEach((n, i) => { rs[n] = (rs[n] || 0) + i + 1; if (i < 10) c10[n] = (c10[n] || 0) + 1; if (i < 30) c30[n] = (c30[n] || 0) + 1; });
   const order = Array.from({ length: 90 }, (_, i) => i + 1).sort((a, b) => (c10[b] || 0) - (c10[a] || 0) || (c30[b] || 0) - (c30[a] || 0) || (rs[a] || 999) - (rs[b] || 999)).slice(0, 15);
@@ -380,6 +398,7 @@ function picksPanel() {
       h("h3", { style: "margin-top:0" }, `${gameName(p.game)} · draw of ${niceDate(p.target_date)}`),
       h("p", { class: "lead" }, `Picks made ${new Date(p.run_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}, before the draw.`),
       result ? h("div", {}, h("p", { style: "margin:4px 0" }, "Result:"), balls(result.numbers, "hit")) : null,
+      p.cip ? cipCard(p.cip, mark) : null,
       h("h3", {}, "Numbers the engines agree on"),
       h("p", { class: "lead" }, "How many engines have each number in their Top 10 (a plain count, not yet weighted by track record)."),
       h("div", { class: "table-wrap" }, h("table", { class: "cov" },
@@ -416,6 +435,70 @@ function viewEngines() {
     eng.msg ? h("div", { class: "msg info" }, eng.msg) : null,
     runStatusPanel(),
     picksPanel());
+}
+
+/* ------------------------------------------------------------------ hits (performance record) */
+const perf = { rows: null, loading: false, err: "", game: null, source: "all", showAll: false };
+async function perfLoad() {
+  perf.loading = true; perf.err = ""; render();
+  try {
+    const text = await gh("GET", `/repos/${REPO}/contents/predictions/performance.csv?ref=${BRANCH}`, state.token, null, true);
+    const lines = text.trim().split("\n"); const head = lines[0].split(",");
+    perf.rows = lines.slice(1).map((l) => { const c = l.split(","); const o = {}; head.forEach((k, i) => { o[k] = c[i] || ""; }); return o; });
+  } catch (e) { perf.err = e.message; }
+  perf.loading = false; render();
+}
+const ENGINE_ORDER = ["cip", "theresa", "angel", "desmond", "kadija", "king", "henry", "lady", "lukas", "ohemaa", "penoukou"];
+const SRC_LABEL = { live: "live", history: "saved", replay: "test" };
+function viewHits() {
+  if (!perf.rows && !perf.loading && !perf.err) perfLoad();
+  if (!perf.game) perf.game = eng.game || nextGame();
+  const sel = h("select", { onchange: (e) => { perf.game = e.target.value; perf.showAll = false; render(); } },
+    GAME_IDS.map((g) => h("option", { value: g, selected: g === perf.game }, gameName(g))));
+  const srcSel = h("select", { onchange: (e) => { perf.source = e.target.value; render(); } },
+    [["all", "All records (live, saved and test draws)"], ["live", "Live picks only"], ["history", "Saved predictions (Apr–Sep 2026)"], ["replay", "Replay test (past draws)"]]
+      .map(([v, t]) => h("option", { value: v, selected: v === perf.source }, t)));
+  const head = [h("h2", {}, "Engine hits"),
+    h("p", { class: "lead" }, "How many winning numbers each engine had in its lists, game by game, and where they sat."),
+    h("div", { class: "panel form" }, h("label", {}, "Game"), sel, h("label", {}, "Records"), srcSel)];
+  if (perf.loading || !perf.rows) return h("section", { class: "form-wide" }, ...head, h("p", { class: "lead" }, perf.err || "Loading the performance record…"));
+  const rows = perf.rows.filter((r) => r.game === perf.game && (perf.source === "all" || r.source === perf.source));
+  // scoreboard for this game
+  const by = {};
+  for (const r of rows) (by[r.engine] = by[r.engine] || []).push(r);
+  const LV = [5, 10, 30, 60];
+  const chance = (k) => (5 * k) / 90;
+  const avg = (list, k) => { const v = list.map((r) => r[`hits${k}`]).filter((x) => x !== ""); return v.length ? v.reduce((a, b) => a + Number(b), 0) / v.length : null; };
+  const engines = Object.keys(by).sort((a, b) => ENGINE_ORDER.indexOf(a) - ENGINE_ORDER.indexOf(b));
+  const cell = (v, k) => v === null ? h("td", { class: "num" }, "–") : h("td", { class: `num ${v / chance(k) >= 1.15 ? "good" : v / chance(k) <= 0.85 ? "weak" : ""}` }, v.toFixed(2));
+  const board = h("div", { class: "table-wrap" }, h("table", { class: "cov" },
+    h("thead", {}, h("tr", {}, h("th", {}, "Engine"), h("th", { class: "num" }, "Draws"), ...LV.map((k) => h("th", { class: "num" }, `Top ${k}`)))),
+    h("tbody", {},
+      ...engines.map((e) => h("tr", {}, h("td", {}, e === "cip" ? "CIP" : e.charAt(0).toUpperCase() + e.slice(1)), h("td", { class: "num" }, String(by[e].length)), ...LV.map((k) => cell(avg(by[e], k), k)))),
+      h("tr", { class: "chance" }, h("td", {}, "Random picks"), h("td", {}), ...LV.map((k) => h("td", { class: "num" }, chance(k).toFixed(2)))))));
+  // draw by draw, newest first
+  const draws = {};
+  for (const r of rows) { const k = `${r.date}|${r.source}`; (draws[k] = draws[k] || []).push(r); }
+  const keys = Object.keys(draws).sort((a, b) => (a < b ? 1 : -1));
+  const shown = perf.showAll ? keys : keys.slice(0, 25);
+  const list = shown.map((k) => {
+    const [d, src] = k.split("|"); const res = drawFor(perf.game, d);
+    const items = draws[k].sort((a, b) => ENGINE_ORDER.indexOf(a.engine) - ENGINE_ORDER.indexOf(b.engine));
+    return h("div", { class: "panel hit-draw" },
+      h("div", { class: "hit-head" }, h("b", {}, niceDate(d)), h("span", { class: "tag" }, SRC_LABEL[src] || src), res ? balls(res.numbers, "small") : null),
+      h("table", { class: "cov compact" }, h("tbody", {}, items.map((r) => h("tr", {},
+        h("td", {}, r.engine === "cip" ? "CIP" : r.engine.charAt(0).toUpperCase() + r.engine.slice(1)),
+        h("td", { class: "num" }, r.hits10 === "" ? "–" : `${r.hits10} in 10`),
+        h("td", { class: "num" }, r.hits60 === "" ? `${r.list_len} listed` : `${r.hits60} in 60`),
+        h("td", { class: "pos-list" }, r.positions ? r.positions.split(" ").map((x) => { const [n, pos] = x.split("@"); return `${twoDigits(n)} #${pos}`; }).join(" · ") : "none"))))));
+  });
+  return h("section", { class: "form-wide" }, ...head,
+    h("h3", {}, `${gameName(perf.game)}: average winning numbers caught per draw`),
+    h("p", { class: "fine", style: "margin-top:0" }, "Green: at least 15% above random picks. Red: at least 15% below. Few draws mean big swings by luck."),
+    board,
+    h("h3", {}, `Draw by draw (${keys.length})`),
+    ...list,
+    keys.length > 25 ? h("button", { class: "btn", onclick: () => { perf.showAll = !perf.showAll; render(); } }, perf.showAll ? "Show fewer" : `Show all ${keys.length}`) : null);
 }
 
 function viewAbout() {
@@ -624,7 +707,7 @@ function viewSettings() {
 }
 
 /* ------------------------------------------------------------------ shell */
-const TITLES = { dashboard: "Dashboard", add: "Add result", masterdata: "MASTER_DATA", engines: "Prediction Engines", settings: "Settings", about: "About" };
+const TITLES = { dashboard: "Dashboard", add: "Add result", masterdata: "MASTER_DATA", engines: "Prediction Engines", hits: "Engine hits", settings: "Settings", about: "About" };
 function toggleTheme() {
   const cur = document.documentElement.getAttribute("data-theme");
   const isDark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -646,7 +729,7 @@ function setMenu(open) {
 }
 function render() {
   const app = $("#app"); app.replaceChildren();
-  const views = { dashboard: viewDashboard, add: viewAdd, masterdata: viewMasterData, engines: viewEngines, settings: viewSettings, about: viewAbout };
+  const views = { dashboard: viewDashboard, add: viewAdd, masterdata: viewMasterData, engines: viewEngines, hits: viewHits, settings: viewSettings, about: viewAbout };
   if (!views[state.view]) state.view = "dashboard";
   if (!state.token && !["settings", "about"].includes(state.view)) {
     state.view = "settings";

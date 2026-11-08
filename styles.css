@@ -230,3 +230,13 @@ details.panel > summary { color: var(--text); font-weight: 600; }
 .row-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 input.box[readonly] { background: rgba(0,0,0,.05); color: var(--text-secondary); }
 .hint { font-weight: 400; color: var(--text-secondary); font-size: 13px; }
+.cip { border: 1px solid var(--accent); border-radius: 12px; padding: 14px; margin: 14px 0; background: var(--bg-card); }
+.cip-grid { display: flex; gap: 22px; flex-wrap: wrap; }
+.cip-label { font-size: 13px; color: var(--text-secondary); margin: 8px 0 4px; font-weight: 600; }
+table.cov td.good { color: #15803d; font-weight: 700; }
+table.cov td.weak { color: #b91c1c; }
+table.cov tr.chance td { color: var(--text-secondary); font-style: italic; }
+table.cov.compact td { padding: 5px 4px; font-size: 13px; }
+.hit-draw { padding: 12px 14px; }
+.hit-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.pos-list { color: var(--text-secondary); font-size: 12px; }
