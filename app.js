@@ -539,7 +539,7 @@ async function cipLoad(game) {
   } catch (e) { cipv.err = e.message; }
   cipv.loading = false; render();
 }
-const FEATURE_NAME = { hot: "Hot numbers", overdue: "Overdue numbers", repeat: "Repeats of last draw", machine: "Last machine numbers", other_games: "Other games, last 3 days", theresa_later: "Theresa's picks dropping later", hpt: "Hit Position Tracker pathways" };
+const FEATURE_NAME = { hot: "Hot numbers", overdue: "Overdue numbers", repeat: "Repeats of last draw", machine: "Last machine numbers", other_games: "Other games, last 3 days", theresa_later: "Theresa's picks dropping later", hpt: "Hit Position Tracker pathways", followers: "Followers of last draw" };
 const capE = (e) => (e === "cip" ? "CIP" : e ? e.charAt(0).toUpperCase() + e.slice(1) : "");
 function viewCip() {
   if (!cipv.game) cipv.game = eng.game || nextGame();
