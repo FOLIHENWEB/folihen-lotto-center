@@ -377,6 +377,8 @@ function cipCard(c, mark, rec) {
       h("div", {}, h("div", { class: "cip-label" }, "Two sure"), mark(c.two_sure))),
     h("div", { class: "cip-label" }, "Top 5"), mark(c.top5),
     h("div", { class: "cip-label" }, "Top 10"), mark(c.top10),
+    c.top20 ? h("div", { class: "cip-label" }, "Top 15 (Top 10 plus)") : null, c.top20 ? mark(c.top20.slice(10, 15)) : null,
+    c.top20 ? h("div", { class: "cip-label" }, "Top 20 (Top 15 plus)") : null, c.top20 ? mark(c.top20.slice(15, 20)) : null,
     c.strongest_engine ? h("p", { class: "fine", style: "margin-top:10px" },
       `Strongest engine for this game on its record: ${cap(c.strongest_engine)} (Top 10 at ${(pw[c.strongest_engine] || 1).toFixed(2)}× chance).`) : null,
     (c.best_positions || []).length ? h("p", { class: "fine", style: "margin-top:4px" }, "Strongest positions: " +
@@ -545,7 +547,7 @@ function viewCip() {
   const sel = h("select", { onchange: (e) => { cipv.game = e.target.value; render(); } },
     GAME_IDS.map((g) => h("option", { value: g, selected: g === cipv.game }, gameName(g))));
   const head = [h("h2", {}, "Consensus Intelligence Platform"),
-    h("p", { class: "lead" }, "The CIP weighs every engine's picks by how often each engine's numbers have dropped, at each position, in this game. It gives a banker, two sure, Top 5 and Top 10."),
+    h("p", { class: "lead" }, "The CIP weighs every engine's picks by how often each engine's numbers have dropped, at each position, in this game. It gives a banker, two sure, Top 5, Top 10, Top 15 and Top 20."),
     h("div", { class: "panel form" }, h("label", {}, "Game"), sel)];
   if (!cipv.dna) return h("section", { class: "form-wide" }, ...head, h("p", { class: "lead" }, cipv.err || "Loading…"));
   const g = cipv.game, dna = cipv.dna.games[g], p = cipv.picks[g];
@@ -567,14 +569,20 @@ function viewCip() {
   const srcRows = [["all", "All records"], ["live", "Live picks"], ["history", "Saved predictions"], ["replay", "Replay test"]].filter(([k]) => c[k]);
   const sb = h("div", { class: "panel" },
     h("h3", { style: "margin-top:0" }, "How the CIP has done in this game ", h("span", { class: `tag conf-${(c.confidence || "").replace(/ /g, "-")}` }, c.confidence || "no record")),
+    h("h4", { style: "margin-top:4px" }, "Winning numbers caught per draw"),
     h("div", { class: "table-wrap" }, h("table", { class: "cov compact" },
-      h("thead", {}, h("tr", {}, h("th", {}, "Records"), h("th", { class: "num" }, "Draws"), h("th", { class: "num" }, "Top 5"), h("th", { class: "num" }, "Top 10"), h("th", { class: "num" }, "Banker"), h("th", { class: "num" }, "Two sure"))),
+      h("thead", {}, h("tr", {}, h("th", {}, "Records"), h("th", { class: "num" }, "Draws"), h("th", { class: "num" }, "Top 5"), h("th", { class: "num" }, "Top 10"), h("th", { class: "num" }, "Top 15"), h("th", { class: "num" }, "Top 20"))),
       h("tbody", {},
         ...srcRows.map(([k, t]) => h("tr", {}, h("td", {}, t), h("td", { class: "num" }, String(c[k].draws)),
-          h("td", { class: "num" }, c[k].top5.toFixed(2)), h("td", { class: "num" }, c[k].top10.toFixed(2)),
-          h("td", { class: "num" }, pct(c[k].banker)), h("td", { class: "num" }, pct(c[k].two_sure)))),
-        h("tr", { class: "chance" }, h("td", {}, "Random picks"), h("td", {}), h("td", { class: "num" }, "0.28"), h("td", { class: "num" }, "0.56"), h("td", { class: "num" }, "5.6%"), h("td", { class: "num" }, "10.9%"))))),
-    h("p", { class: "fine" }, "Top 5 and Top 10: winning numbers caught per draw. Banker: how often the banker dropped. Two sure: how often at least one of the two dropped. " + (CONF_TEXT[c.confidence] || "")),
+          ...["top5", "top10", "top15", "top20"].map((x) => h("td", { class: "num" }, c[k][x] == null ? "–" : c[k][x].toFixed(2))))),
+        h("tr", { class: "chance" }, h("td", {}, "Random picks"), h("td", {}), ...["0.28", "0.56", "0.83", "1.11"].map((x) => h("td", { class: "num" }, x)))))),
+    h("h4", {}, "Banker and two sure"),
+    h("div", { class: "table-wrap" }, h("table", { class: "cov compact" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Records"), h("th", { class: "num" }, "Banker dropped"), h("th", { class: "num" }, "One of two sure dropped"))),
+      h("tbody", {},
+        ...srcRows.map(([k, t]) => h("tr", {}, h("td", {}, t), h("td", { class: "num" }, pct(c[k].banker)), h("td", { class: "num" }, pct(c[k].two_sure)))),
+        h("tr", { class: "chance" }, h("td", {}, "Random picks"), h("td", { class: "num" }, "5.6%"), h("td", { class: "num" }, "10.9%"))))),
+    h("p", { class: "fine" }, (CONF_TEXT[c.confidence] || "")),
     h("button", { class: "btn ghost", onclick: () => { perf.game = g; state.view = "hits"; render(); } }, "See every draw in Engine hits"));
   // 3. all games at a glance
   const all = h("details", { class: "panel" }, h("summary", {}, "CIP in every game"),
