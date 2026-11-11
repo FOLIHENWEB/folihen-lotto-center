@@ -367,9 +367,20 @@ function progressBar() {
 }
 
 /* Consensus Intelligence Platform: the engines' picks weighed by their record. */
-function cipCard(c, mark, rec) {
+/* "Against" play: CIP Top 10 against an engine's 10 (its list without the CIP's numbers).
+   The two engines sharing the fewest numbers with the CIP's Top 10 are recommended (same rule as tools/against.py). */
+function againstFor(picks, c) {
+  if (c.against && c.against.length) return c.against;
+  const A = (c.top10 || []).slice(0, 10), pw = c.engine_power || {};
+  return Object.entries(picks || {}).filter(([e, rk]) => e !== "cip" && rk && rk.length)
+    .map(([e, rk]) => ({ engine: e, shared: rk.slice(0, 10).filter((n) => A.includes(n)).length, numbers: rk.filter((n) => !A.includes(n)).slice(0, 10) }))
+    .sort((a, b) => a.shared - b.shared || (pw[b.engine] || 1) - (pw[a.engine] || 1) || (a.engine < b.engine ? -1 : 1))
+    .slice(0, 2);
+}
+function cipCard(c, mark, rec, picks) {
   const cap = (e) => (e ? e.charAt(0).toUpperCase() + e.slice(1) : "");
   const pw = c.engine_power || {};
+  const ag = picks ? againstFor(picks, c) : (c.against || []);
   return h("div", { class: "cip" },
     h("h3", { style: "margin-top:0" }, "Consensus Intelligence Platform"),
     h("div", { class: "cip-grid" },
@@ -379,6 +390,9 @@ function cipCard(c, mark, rec) {
     h("div", { class: "cip-label" }, "Top 10"), mark(c.top10),
     c.top20 ? h("div", { class: "cip-label" }, "Top 15 (Top 10 plus)") : null, c.top20 ? mark(c.top20.slice(10, 15)) : null,
     c.top20 ? h("div", { class: "cip-label" }, "Top 20 (Top 15 plus)") : null, c.top20 ? mark(c.top20.slice(15, 20)) : null,
+    ag.length ? h("div", { class: "against" },
+      h("div", { class: "cip-label" }, "Play against the CIP Top 10 (10 x 10)"),
+      ...ag.map((x) => h("div", {}, h("div", { class: "fine" }, `${cap(x.engine)} (shares ${x.shared} with the CIP)`), mark(x.numbers)))) : null,
     c.strongest_engine ? h("p", { class: "fine", style: "margin-top:10px" },
       `Strongest engine for this game on its record: ${cap(c.strongest_engine)} (Top 10 at ${(pw[c.strongest_engine] || 1).toFixed(2)}× chance).`) : null,
     (c.best_positions || []).length ? h("p", { class: "fine", style: "margin-top:4px" }, "Strongest positions: " +
@@ -411,7 +425,7 @@ function picksPanel() {
       h("h3", { style: "margin-top:0" }, `${gameName(p.game)} · draw of ${niceDate(p.target_date)}`),
       h("p", { class: "lead" }, `Picks made ${new Date(p.run_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}, before the draw.`),
       result ? h("div", {}, h("p", { style: "margin:4px 0" }, "Result:"), balls(result.numbers, "hit")) : null,
-      p.cip ? cipCard(p.cip, mark, cipv.dna && cipv.dna.games[p.game] ? cipv.dna.games[p.game].cip : null) : null,
+      p.cip ? cipCard(p.cip, mark, cipv.dna && cipv.dna.games[p.game] ? cipv.dna.games[p.game].cip : null, p.picks) : null,
       h("h3", {}, "Numbers the engines agree on"),
       h("p", { class: "lead" }, "How many engines have each number in their Top 10 (a plain count, not yet weighted by track record)."),
       h("div", { class: "table-wrap" }, h("table", { class: "cov" },
@@ -525,6 +539,7 @@ async function cipLoad(game) {
   cipv.loading = true; cipv.err = ""; render();
   try {
     if (!cipv.dna) cipv.dna = JSON.parse(await gh("GET", `/repos/${REPO}/contents/predictions/game_dna.json?ref=${BRANCH}`, state.token, null, true));
+    if (!cipv.against) { try { cipv.against = JSON.parse(await gh("GET", `/repos/${REPO}/contents/predictions/against.json?ref=${BRANCH}`, state.token, null, true)); } catch (e) { cipv.against = { none: true }; } }
     if (!perf.rows && !perf.loading) perfLoad();
     if (!(game in cipv.picks)) {
       if (!eng.files) {
@@ -562,7 +577,7 @@ function viewCip() {
       : h("div", {},
         h("p", { class: "lead" }, `Made ${new Date(p.run_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}, before the draw.`),
         result ? h("div", {}, h("p", { style: "margin:4px 0" }, "Result:"), balls(result.numbers, "hit")) : null,
-        p.cip ? cipCard(p.cip, mark, dna ? dna.cip : null) : h("p", {}, "This run was made before the CIP existed. Run the engines again to get its picks.")));
+        p.cip ? cipCard(p.cip, mark, dna ? dna.cip : null, p.picks) : h("p", {}, "This run was made before the CIP existed. Run the engines again to get its picks.")));
   if (!dna) return h("section", { class: "form-wide" }, ...head, recPanel, h("p", { class: "lead" }, "No profile for this game yet."));
   // 2. the CIP's scoreboard in this game
   const c = dna.cip || {};
@@ -620,7 +635,27 @@ function viewCip() {
         h("td", { class: "num" }, (x.z >= 0 ? "+" : "") + x.z.toFixed(1)),
         h("td", {}, h("span", { class: `tag ${x.status === "active" ? "conf-beating-chance" : ""}` }, x.status === "active" ? "used" : "watching")),
         h("td", { class: "pos-list" }, (x.next_numbers || []).length ? x.next_numbers.slice(0, 12).map(twoDigits).join(" ") + (x.next_numbers.length > 12 ? " …" : "") : "–")))))));
-  return h("section", { class: "form-wide" }, ...head, cipv.err ? h("div", { class: "msg error" }, cipv.err) : null, recPanel, sb, dnaPanel, all);
+  // 5. CIP against engines: the cedi record
+  const AG = cipv.against && !cipv.against.none ? cipv.against : null;
+  const ced = (x) => `${x < 0 ? "−" : "+"}${Math.abs(Math.round(x)).toLocaleString()}`;
+  const agPanel = AG ? h("div", { class: "panel" },
+    h("h3", { style: "margin-top:0" }, "CIP against engines · your cedi record"),
+    h("p", { class: "fine", style: "margin-top:0" }, `10 x 10 = 100 lines at ${AG.settings.line_stake} cedis, ${Math.round(AG.settings.discount * 100)}% off = ${Math.round(AG.cost_per_play).toLocaleString()} per play; each winning line pays ${AG.settings.pays_per_line.toLocaleString()}. All games, live picks only.`),
+    (() => { const r = AG.recommended_two; return h("p", {}, h("b", {}, "Recommended two each draw: "),
+      `${r.plays} plays, ${r.wins} won, ${r.lines} winning lines, staked ${Math.round(r.staked).toLocaleString()}, won ${r.won.toLocaleString()}, net `, h("b", { class: r.net >= 0 ? "pos" : "neg" }, `${ced(r.net)} cedis`)); })(),
+    h("div", { class: "table-wrap" }, h("table", { class: "cov compact" },
+      h("thead", {}, h("tr", {}, h("th", {}, "CIP against"), h("th", { class: "num" }, "Plays"), h("th", { class: "num" }, "Wins"), h("th", { class: "num" }, "Lines"), h("th", { class: "num" }, "Net cedis"))),
+      h("tbody", {}, Object.entries(AG.per_engine).map(([e, x]) => h("tr", {}, h("td", {}, capE(e)), h("td", { class: "num" }, String(x.plays)),
+        h("td", { class: "num" }, `${x.wins} (${Math.round(100 * x.wins / Math.max(x.plays, 1))}%)`), h("td", { class: "num" }, String(x.lines)),
+        h("td", { class: `num ${x.net >= 0 ? "good" : "weak"}` }, ced(x.net))))),
+      )),
+    h("p", { class: "fine" }, "Chance: a play wins about 18% of the time and returns about 85 cedis per 100 staked. " + AG.replay_note.replace(" A play wins about 18% of the time.", "")),
+    h("details", {}, h("summary", {}, "Draw by draw"),
+      ...AG.draws.slice(0, 30).map((d) => h("div", { class: "hit-draw" },
+        h("div", { class: "hit-head" }, `${gameName(d.game)} · ${niceDate(d.date)} · ${d.result.map(twoDigits).join("-")} · CIP hits ${d.cip_hits}`),
+        h("div", { class: "fine" }, Object.entries(d.pairings).map(([e, x]) => `${d.recommended.includes(e) ? "★" : ""}${capE(e)} ${x.engine_hits}${x.lines ? ` → ${x.lines} line${x.lines > 1 ? "s" : ""}` : ""}`).join(" · "))))))
+    : null;
+  return h("section", { class: "form-wide" }, ...head, cipv.err ? h("div", { class: "msg error" }, cipv.err) : null, recPanel, agPanel, sb, dnaPanel, all);
 }
 
 function viewAbout() {

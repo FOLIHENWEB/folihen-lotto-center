@@ -247,3 +247,6 @@ table.cov.compact td, table.cov.compact th { padding: 5px 4px; font-size: 13px; 
 .tag.conf-at-chance, .tag.conf-too-few-draws { background: var(--chip, #eef2f7); }
 .dna-facts li { margin: 4px 0; }
 h4 { margin: 16px 0 6px; }
+.against { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line, #d8dee8); }
+.against .fine { margin: 6px 0 2px; }
+b.pos { color: #15803d; } b.neg { color: #b91c1c; }
