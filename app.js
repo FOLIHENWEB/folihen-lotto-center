@@ -101,7 +101,7 @@ function b64encode(text) {
 }
 class GitHubError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 
-async function gh(method, path, token, body, raw = false) {
+async function ghOnce(method, path, token, body, raw = false) {
   let res;
   try {
     res = await fetch(`${API}${path}`, {
@@ -128,9 +128,21 @@ async function gh(method, path, token, body, raw = false) {
     };
     throw new GitHubError(res.status, hints[res.status] || `GitHub error ${res.status}. Please try again.`);
   }
-  if (raw) return res.text();
-  const text = await res.text(); // some calls (e.g. starting a run) answer with an empty body
-  return text ? JSON.parse(text) : null;
+  let text;
+  try { text = await res.text(); } // a weak connection can drop while the answer is downloading
+  catch { throw new GitHubError(0, "The connection dropped while loading. Tap Refresh to try again."); }
+  if (raw) return text;
+  return text ? JSON.parse(text) : null; // some calls (e.g. starting a run) answer with an empty body
+}
+/* Reading (GET) is retried twice on a weak connection; saving is never repeated automatically. */
+async function gh(method, path, token, body, raw = false) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await ghOnce(method, path, token, body, raw); }
+    catch (e) {
+      if (method !== "GET" || e.status !== 0 || attempt >= 2) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
 }
 async function loadOnline(token) {
   const url = `/repos/${REPO}/contents/${CSV_PATH}?ref=${BRANCH}`;
@@ -307,11 +319,13 @@ async function engRefresh() {
   if (eng.run && eng.run.status !== "completed" && state.view === "engines") eng.timer = setTimeout(engRefresh, 15000);
 }
 async function engStart() {
+  if (eng.starting) return;          // one tap = one run (a double tap used to start two runs)
+  eng.starting = true; setTimeout(() => { eng.starting = false; }, 20000);
   eng.msg = "Starting…"; render();
   try {
     await gh("POST", `/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, state.token,
       { ref: BRANCH, inputs: { game: String(GAME_IDS.indexOf(eng.game) + 1) } });
-    eng.msg = `Started for ${gameName(eng.game)}. It takes about 5–15 minutes; this page updates by itself.`;
+    eng.msg = `Started for ${gameName(eng.game)}. It takes about 1–5 minutes; this page updates by itself.`;
     setTimeout(engRefresh, 6000);
   } catch (e) {
     eng.msg = e.status === 403 || e.status === 404
@@ -456,9 +470,9 @@ function viewEngines() {
     h("div", { class: "panel form" },
       h("label", {}, "Game"), sel,
       h("div", { class: "actions" },
-        h("button", { class: "btn primary", disabled: running, onclick: engStart }, running ? "Engines are running…" : "Run engines"),
+        h("button", { class: "btn primary", disabled: running || eng.starting, onclick: engStart }, running ? "Engines are running…" : "Run engines"),
         h("button", { class: "btn ghost", onclick: () => { eng.msg = ""; engRefresh(); } }, "Refresh")),
-      h("p", { class: "fine", style: "margin-top:10px" }, "Add the latest results first: the engines use them. A run takes about 5–15 minutes.")),
+      h("p", { class: "fine", style: "margin-top:10px" }, "Add the latest results first: the engines use them. A run takes about 1–5 minutes (longer the first time each game tunes in a week).")),
     eng.msg ? h("div", { class: "msg info" }, eng.msg) : null,
     runStatusPanel(),
     picksPanel());
